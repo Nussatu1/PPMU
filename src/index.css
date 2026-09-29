@@ -1,0 +1,588 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme inline {
+  --color-surface: rgb(var(--fi-card-bg));
+  --color-surface-muted: rgb(var(--fi-bg));
+  --color-sidebar: rgb(var(--fi-sidebar-bg));
+  --color-topbar: rgb(var(--fi-topbar-bg));
+  --color-table-header: rgb(var(--fi-table-header-bg));
+  --color-hover-bg: rgb(var(--fi-hover-bg));
+  --color-nav-active: rgb(var(--fi-nav-active-bg));
+  --color-line: rgb(var(--fi-card-border));
+  --color-line-divider: rgb(var(--fi-divider));
+  --color-line-row: rgb(var(--fi-row-divider));
+  --color-line-strong: rgb(var(--fi-input-border));
+  --color-input-bg: rgb(var(--fi-input-bg));
+  --color-fg: rgb(var(--fi-text-primary));
+  --color-fg-muted: rgb(var(--fi-text-secondary));
+  --color-fg-subtle: rgb(var(--fi-text-muted));
+  --color-fg-nav: rgb(var(--fi-text-nav));
+  --color-overlay: rgb(var(--fi-overlay));
+  --color-chart-grid: rgb(var(--fi-chart-grid));
+  --color-chart-axis: rgb(var(--fi-chart-axis));
+  --color-tooltip-bg: rgb(var(--fi-tooltip-bg));
+  --color-tooltip-fg: rgb(var(--fi-tooltip-fg));
+  --color-primary-50: rgb(var(--fi-primary-50));
+  --color-primary-100: rgb(var(--fi-primary-100));
+  --color-primary-200: rgb(var(--fi-primary-200));
+  --color-primary-300: rgb(var(--fi-primary-300));
+  --color-primary-400: rgb(var(--fi-primary-400));
+  --color-primary-500: rgb(var(--fi-primary-500));
+  --color-primary-600: rgb(var(--fi-primary-600));
+  --color-primary-700: rgb(var(--fi-primary-700));
+  --color-primary-800: rgb(var(--fi-primary-800));
+  --color-primary-900: rgb(var(--fi-primary-900));
+  --color-primary-950: rgb(var(--fi-primary-950));
+
+  --color-amber-50: rgb(var(--fi-primary-50));
+  --color-amber-100: rgb(var(--fi-primary-100));
+  --color-amber-200: rgb(var(--fi-primary-200));
+  --color-amber-300: rgb(var(--fi-primary-300));
+  --color-amber-400: rgb(var(--fi-primary-400));
+  --color-amber-500: rgb(var(--fi-primary-500));
+  --color-amber-600: rgb(var(--fi-primary-600));
+  --color-amber-700: rgb(var(--fi-primary-700));
+  --color-amber-800: rgb(var(--fi-primary-800));
+  --color-amber-900: rgb(var(--fi-primary-900));
+  --color-amber-950: rgb(var(--fi-primary-950));
+}
+
+@theme {
+  --animate-fade-in: fade-in 0.2s ease-out;
+  --animate-scale-in: scale-in 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-slide-in-right: slide-in-right 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes scale-in {
+    from { opacity: 0; transform: scale(0.95) translateY(-5px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
+  }
+  @keyframes slide-in-right {
+    from { transform: translateX(100%); }
+    to { transform: translateX(0); }
+  }
+}
+
+@layer base {
+  :root {
+    --fi-bg: 250 250 250;               /* canvas: gray-50 */
+    --fi-card-bg: 255 255 255;
+    --fi-sidebar-bg: 255 255 255;
+    --fi-topbar-bg: 255 255 255;
+    --fi-table-header-bg: 250 250 250;  /* gray-50 */
+    --fi-hover-bg: 250 250 250;         /* baris tabel, item dropdown */
+    --fi-nav-active-bg: 244 244 245;    /* sidebar hover/aktif, tab aktif: gray-100 */
+    --fi-card-border: 9 9 11 / 0.05;    /* ring-gray-950/5 */
+    --fi-divider: 228 228 231;          /* gray-200 */
+    --fi-row-divider: 228 228 231;      /* gray-200 */
+    --fi-input-border: 9 9 11 / 0.10;   /* ring-gray-950/10 */
+    --fi-input-bg: 255 255 255;
+    --fi-text-primary: 9 9 11;          /* gray-950 */
+    --fi-text-secondary: 113 113 122;   /* gray-500 */
+    --fi-text-muted: 161 161 170;       /* gray-400 */
+    --fi-text-nav: 63 63 70;            /* gray-700 */
+    --fi-overlay: 9 9 11 / 0.5;         /* gray-950/50 */
+    --fi-chart-grid: 228 228 231;
+    --fi-chart-axis: 113 113 122;
+    --fi-tooltip-bg: 24 24 27;
+    --fi-tooltip-fg: 255 255 255;
+    color-scheme: light;
+
+    /* Primary = amber (default) */
+    --fi-primary-50: 255 251 235;
+    --fi-primary-100: 254 243 199;
+    --fi-primary-200: 253 230 138;
+    --fi-primary-300: 252 211 77;
+    --fi-primary-400: 251 191 36;
+    --fi-primary-500: 245 158 11;
+    --fi-primary-600: 217 119 6;
+    --fi-primary-700: 180 83 9;
+    --fi-primary-800: 146 64 14;
+    --fi-primary-900: 120 53 15;
+    --fi-primary-950: 69 26 3;
+  }
+
+  /* Green Accent Theme (oklch(79.2% 0.209 151.711)) */
+  html.theme-green,
+  .theme-green {
+    --fi-primary-50: 240 253 244;
+    --fi-primary-100: 220 252 231;
+    --fi-primary-200: 185 248 207;
+    --fi-primary-300: 123 241 168;
+    --fi-primary-400: 5 223 114;     /* oklch(79.2% 0.209 151.711) */
+    --fi-primary-500: 0 201 80;
+    --fi-primary-600: 0 166 62;
+    --fi-primary-700: 0 130 54;
+    --fi-primary-800: 1 102 48;
+    --fi-primary-900: 13 84 43;
+    --fi-primary-950: 3 46 21;
+  }
+
+  .dark {
+    --fi-bg: 9 9 11;                    /* gray-950 */
+    --fi-card-bg: 24 24 27;             /* gray-900 */
+    --fi-sidebar-bg: 24 24 27;
+    --fi-topbar-bg: 24 24 27;
+    --fi-table-header-bg: 255 255 255 / 0.05;
+    --fi-hover-bg: 255 255 255 / 0.05;
+    --fi-nav-active-bg: 255 255 255 / 0.05;
+    --fi-card-border: 255 255 255 / 0.10;   /* ring-white/10 */
+    --fi-divider: 255 255 255 / 0.10;
+    --fi-row-divider: 255 255 255 / 0.05;
+    --fi-input-border: 255 255 255 / 0.20;  /* ring-white/20 */
+    --fi-input-bg: 255 255 255 / 0.05;
+    --fi-text-primary: 255 255 255;
+    --fi-text-secondary: 161 161 170;   /* gray-400 */
+    --fi-text-muted: 113 113 122;       /* gray-500 */
+    --fi-text-nav: 228 228 231;         /* gray-200 */
+    --fi-overlay: 9 9 11 / 0.75;        /* gray-950/75 */
+    --fi-chart-grid: 255 255 255 / 0.10;
+    --fi-chart-axis: 161 161 170;
+    --fi-tooltip-bg: 39 39 42;
+    --fi-tooltip-fg: 255 255 255;
+    color-scheme: dark;
+  }
+
+  /* Recharts Cartesian Axis Labels & Grid */
+  .recharts-cartesian-axis-tick-value,
+  .recharts-cartesian-axis-tick-labels text,
+  .recharts-xAxis-tick-labels text,
+  .recharts-yAxis-tick-labels text {
+    fill: rgb(var(--fi-chart-axis));
+    font-size: 11px;
+    font-weight: 500;
+  }
+
+  body {
+    font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    background-color: rgb(var(--fi-bg));
+    color: rgb(var(--fi-text-primary));
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+  }
+
+  /* Custom Input Wrapper */
+  .fi-input-wrp {
+    background-color: rgb(var(--fi-input-bg));
+    color: rgb(var(--fi-input-text));
+    border: 1px solid rgb(var(--fi-input-border));
+    border-radius: 0.5rem;
+    transition: box-shadow 75ms ease, border-color 75ms ease;
+  }
+
+  .fi-input-wrp:focus-within {
+    border-color: rgb(var(--fi-primary-500));
+    box-shadow: 0 0 0 2px rgba(var(--fi-primary-500), 0.5);
+  }
+
+  /* Custom Checkbox */
+  input[type="checkbox"] {
+    -webkit-appearance: none;
+    appearance: none;
+    background-color: rgb(var(--fi-input-bg));
+    margin: 0;
+    font: inherit;
+    color: rgb(var(--fi-primary-600));
+    width: 1.125rem;
+    height: 1.125rem;
+    border: 1px solid rgb(var(--fi-input-border));
+    border-radius: 0.375rem;
+    display: inline-grid;
+    place-content: center;
+    cursor: pointer;
+    transition: background-color 75ms ease, border-color 75ms ease, box-shadow 75ms ease;
+  }
+
+  input[type="checkbox"]:hover {
+    border-color: rgb(var(--fi-primary-500));
+  }
+
+  input[type="checkbox"]:focus-visible {
+    outline: 2px solid transparent;
+    outline-offset: 1px;
+    box-shadow: 0 0 0 2px rgb(var(--fi-card-bg)), 0 0 0 4px rgba(var(--fi-primary-500), 0.5);
+  }
+
+  input[type="checkbox"]:checked {
+    background-color: rgb(var(--fi-primary-600));
+    border-color: rgb(var(--fi-primary-600));
+  }
+
+  input[type="checkbox"]::before {
+    content: "";
+    width: 0.65em;
+    height: 0.65em;
+    clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%);
+    transform: scale(0);
+    transform-origin: bottom left;
+    transition: 75ms transform ease-in-out;
+    box-shadow: inset 1em 1em white;
+    background-color: white;
+  }
+
+  input[type="checkbox"]:checked::before {
+    transform: scale(1);
+  }
+
+  /* Custom Select */
+  select {
+    -webkit-appearance: none;
+    appearance: none;
+    background-color: rgb(var(--fi-input-bg));
+    color: rgb(var(--fi-input-text));
+    border: 1px solid rgb(var(--fi-input-border));
+    border-radius: 0.5rem;
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%239ca3af' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+    background-position: right 0.65rem center;
+    background-repeat: no-repeat;
+    background-size: 1.2em 1.2em;
+    padding-right: 2.25rem;
+  }
+
+  .dark select {
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%2371717a' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+  }
+
+  select option {
+    background-color: rgb(var(--fi-card-bg));
+    color: rgb(var(--fi-text-primary));
+    padding: 0.5rem;
+  }
+
+  /* Cross-Browser Custom Scrollbars */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(156, 163, 175, 0.45) transparent;
+  }
+
+  .dark * {
+    scrollbar-color: rgba(113, 113, 122, 0.55) transparent;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(156, 163, 175, 0.45);
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(107, 114, 128, 0.7);
+  }
+
+  .dark ::-webkit-scrollbar-thumb {
+    background: rgba(82, 82, 91, 0.6);
+  }
+  .dark ::-webkit-scrollbar-thumb:hover {
+    background: rgba(113, 113, 122, 0.85);
+  }
+
+  /* Accent color */
+  :root {
+    accent-color: rgb(var(--fi-primary-500));
+  }
+
+  /* Selection color */
+  ::selection {
+    background-color: rgba(var(--fi-primary-500), 0.25);
+    color: inherit;
+  }
+
+  /* Focus visible uniform ring */
+  :focus-visible {
+    outline: 2px solid rgb(var(--fi-primary-500));
+    outline-offset: 2px;
+  }
+
+  /* Chrome/Safari Autofill override */
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus,
+  textarea:-webkit-autofill,
+  textarea:-webkit-autofill:hover,
+  textarea:-webkit-autofill:focus,
+  select:-webkit-autofill,
+  select:-webkit-autofill:hover,
+  select:-webkit-autofill:focus {
+    -webkit-box-shadow: 0 0 0 1000px rgb(var(--fi-input-bg)) inset;
+    -webkit-text-fill-color: rgb(var(--fi-text-primary));
+    transition: background-color 5000s ease-in-out 0s;
+  }
+
+  /* Hide search cancel and password reveal buttons */
+  input[type="search"]::-webkit-search-cancel-button,
+  input[type="search"]::-webkit-search-decoration,
+  input[type="search"]::-webkit-search-results-button,
+  input[type="search"]::-webkit-search-results-decoration {
+    display: none;
+    -webkit-appearance: none;
+  }
+
+  input::-ms-reveal,
+  input::-ms-clear {
+    display: none;
+  }
+
+  /* Hide number spinner buttons */
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type="number"] {
+    -moz-appearance: textfield;
+    appearance: textfield;
+  }
+
+  /* Allow vertical resize on textarea */
+  textarea {
+    resize: vertical;
+  }
+
+  /* Remove default browser focus rings on form controls */
+  input:focus,
+  textarea:focus,
+  select:focus,
+  button:focus {
+    outline: none;
+  }
+}
+
+/* Reduce motion accessibility */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* DayPicker Custom Styling (Filament Theme Compliant) */
+.rdp-root {
+  --rdp-accent-color: rgb(var(--fi-primary-500));
+  --rdp-accent-background-color: rgba(var(--fi-primary-500), 0.15);
+  --rdp-day-height: 32px;
+  --rdp-day-width: 32px;
+  --rdp-day_button-height: 32px;
+  --rdp-day_button-width: 32px;
+  --rdp-day_button-border-radius: 0.5rem;
+  --rdp-nav_button-height: 1.75rem;
+  --rdp-nav_button-width: 1.75rem;
+  --rdp-nav-height: 2rem;
+  margin: 0 auto;
+  font-family: inherit;
+  color: rgb(var(--fi-text-primary));
+}
+
+@keyframes popover-enter-bottom {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes popover-enter-top {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.animate-popover-bottom {
+  animation: popover-enter-bottom 160ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: transform, opacity;
+}
+
+.animate-popover-top {
+  animation: popover-enter-top 160ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: transform, opacity;
+}
+
+.rdp-custom {
+  width: 100%;
+}
+
+.rdp-custom .rdp-months {
+  position: relative;
+  width: 100%;
+}
+
+.rdp-custom .rdp-month {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+.rdp-custom .rdp-month_caption {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  height: 2rem;
+  padding-left: 0.25rem;
+  margin-bottom: 0.25rem;
+}
+
+.rdp-custom .rdp-caption_label {
+  font-size: 0.875rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: rgb(var(--fi-text-primary));
+  text-transform: capitalize;
+}
+
+.rdp-custom .rdp-nav {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  height: 2rem;
+  z-index: 10;
+}
+
+.rdp-custom .rdp-button_previous,
+.rdp-custom .rdp-button_next,
+.rdp-custom .rdp-nav_button {
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 0.5rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: rgb(var(--fi-text-secondary));
+  border: 1px solid rgb(var(--fi-card-border));
+  background-color: transparent;
+  transition: all 120ms cubic-bezier(0.16, 1, 0.3, 1);
+  cursor: pointer;
+}
+
+.rdp-custom .rdp-button_previous:hover,
+.rdp-custom .rdp-button_next:hover,
+.rdp-custom .rdp-nav_button:hover {
+  background-color: rgb(var(--fi-hover-bg));
+  color: rgb(var(--fi-text-primary));
+  border-color: rgb(var(--fi-input-border));
+  transform: scale(1.05);
+}
+
+.rdp-custom .rdp-button_previous:active,
+.rdp-custom .rdp-button_next:active,
+.rdp-custom .rdp-nav_button:active {
+  transform: scale(0.95);
+}
+
+.rdp-custom table,
+.rdp-custom .rdp-month_grid {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.rdp-custom th,
+.rdp-custom .rdp-weekday {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: rgb(var(--fi-text-muted));
+  padding: 0.25rem 0 0.375rem;
+  text-align: center;
+}
+
+.rdp-custom td,
+.rdp-custom .rdp-day {
+  font-size: 0.75rem;
+  text-align: center;
+  padding: 1.5px;
+}
+
+.rdp-custom .rdp-day_button {
+  width: 32px;
+  height: 32px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  border-radius: 0.5rem;
+  margin: 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border: 1px solid transparent;
+  color: rgb(var(--fi-text-primary));
+  transition: all 120ms cubic-bezier(0.16, 1, 0.3, 1);
+  font-variant-numeric: tabular-nums;
+}
+
+.rdp-custom .rdp-day_button:hover:not([disabled]) {
+  background-color: rgba(245, 158, 11, 0.12);
+  color: rgb(217, 119, 6);
+  border-color: rgba(245, 158, 11, 0.25);
+  transform: scale(1.06);
+}
+
+.dark .rdp-custom .rdp-day_button:hover:not([disabled]) {
+  background-color: rgba(245, 158, 11, 0.18);
+  color: rgb(251, 191, 36);
+  border-color: rgba(245, 158, 11, 0.35);
+}
+
+.rdp-custom .rdp-day_button:active:not([disabled]) {
+  transform: scale(0.95);
+}
+
+.rdp-custom .rdp-day_selected,
+.rdp-custom .rdp-selected .rdp-day_button {
+  background-color: rgb(var(--fi-primary-500)) !important;
+  color: #ffffff !important;
+  font-weight: 700 !important;
+  border-color: rgb(var(--fi-primary-500)) !important;
+  box-shadow: 0 1px 3px 0 rgba(245, 158, 11, 0.4), 0 1px 2px -1px rgba(245, 158, 11, 0.3) !important;
+  transform: scale(1) !important;
+}
+
+.rdp-custom .rdp-today:not(.rdp-selected) .rdp-day_button {
+  border-color: rgba(245, 158, 11, 0.6);
+  font-weight: 700;
+  color: rgb(var(--fi-primary-500));
+  background-color: rgba(245, 158, 11, 0.05);
+}
+
+.rdp-custom .rdp-outside {
+  opacity: 0.25;
+}
+
+.rdp-custom .rdp-outside .rdp-day_button {
+  color: rgb(var(--fi-text-muted));
+  cursor: default;
+}
+
+.rdp-custom .rdp-hidden {
+  visibility: hidden;
+}
+
+

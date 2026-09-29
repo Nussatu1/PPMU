@@ -1,0 +1,8 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "rules": {
+    "react/incompatible-library": "off",
+    "react/set-state-in-effect": "off",
+    "react/only-export-components": "off"
+  }
+}
