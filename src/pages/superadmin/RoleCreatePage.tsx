@@ -496,16 +496,15 @@ export const RoleCreatePage: React.FC = () => {
                           const isChecked = selectedPermissions.has(permKey)
 
                           return (
-                            <div
+                            <label
                               key={act.key}
-                              onClick={() => togglePermission(permKey)}
                               className="flex items-center gap-2.5 cursor-pointer select-none group"
                             >
-                              <Checkbox checked={isChecked} onChange={() => {}} />
-                              <span className="text-xs font-medium text-fg group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors">
+                              <Checkbox checked={isChecked} onChange={() => togglePermission(permKey)} />
+                              <span className="text-xs font-medium text-fg group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors">
                                 {act.label}
                               </span>
-                            </div>
+                            </label>
                           )
                         })}
                       </div>
@@ -545,15 +544,14 @@ export const RoleCreatePage: React.FC = () => {
 
                   {!isCollapsed && (
                     <div className="p-4 sm:px-5 pt-3 border-t border-line bg-surface-muted/20">
-                      <div
-                        onClick={() => togglePermission(permKey)}
+                      <label
                         className="flex items-center gap-2.5 cursor-pointer select-none group"
                       >
-                        <Checkbox checked={isChecked} onChange={() => {}} />
-                        <span className="text-xs font-medium text-fg group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors">
+                        <Checkbox checked={isChecked} onChange={() => togglePermission(permKey)} />
+                        <span className="text-xs font-medium text-fg group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors">
                           Akses Halaman
                         </span>
-                      </div>
+                      </label>
                     </div>
                   )}
                 </div>
@@ -590,15 +588,14 @@ export const RoleCreatePage: React.FC = () => {
 
                   {!isCollapsed && (
                     <div className="p-4 sm:px-5 pt-3 border-t border-line bg-surface-muted/20">
-                      <div
-                        onClick={() => togglePermission(permKey)}
+                      <label
                         className="flex items-center gap-2.5 cursor-pointer select-none group"
                       >
-                        <Checkbox checked={isChecked} onChange={() => {}} />
-                        <span className="text-xs font-medium text-fg group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors">
+                        <Checkbox checked={isChecked} onChange={() => togglePermission(permKey)} />
+                        <span className="text-xs font-medium text-fg group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors">
                           Tampilkan Widget
                         </span>
-                      </div>
+                      </label>
                     </div>
                   )}
                 </div>

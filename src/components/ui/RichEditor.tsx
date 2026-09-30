@@ -78,7 +78,7 @@ export const RichEditor: React.FC<RichEditorProps> = ({
           'rounded-lg border overflow-hidden shadow-2xs transition-all bg-surface',
           error
             ? 'border-red-500 focus-within:ring-2 focus-within:ring-red-500/20'
-            : 'border-line-strong focus-within:border-amber-500 focus-within:ring-2 focus-within:ring-amber-500/20'
+            : 'border-line-strong focus-within:border-primary-500 focus-within:ring-2 focus-within:ring-primary-500/20'
         )}
       >
         {/* Editor Toolbar */}

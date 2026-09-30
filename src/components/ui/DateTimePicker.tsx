@@ -277,13 +277,13 @@ export const DateTimePicker: React.FC<DateTimePickerProps> = ({
             error
               ? 'border-red-500 focus:ring-2 focus:ring-red-500/20'
               : isOpen
-              ? 'border-amber-500 ring-2 ring-amber-500/20'
-              : 'border-line-strong hover:border-line-strong focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20',
+              ? 'border-primary-500 ring-2 ring-primary-500/20'
+              : 'border-line-strong hover:border-line-strong focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20',
             disabled && 'opacity-50 cursor-not-allowed bg-surface-muted text-fg-muted'
           )}
         >
           <div className="flex items-center gap-2 truncate">
-            <HeroCalendar className="w-4 h-4 text-amber-500 shrink-0" />
+            <HeroCalendar className="w-4 h-4 text-primary-500 shrink-0" />
             {displayText ? (
               <span className="font-medium text-fg truncate">{displayText}</span>
             ) : (
@@ -366,7 +366,7 @@ export const DateTimePicker: React.FC<DateTimePickerProps> = ({
                       applyTime(val, tempMinute)
                     }}
                     onBlur={() => setTempHour((prev) => prev.padStart(2, '0'))}
-                    className="w-10 h-7 rounded border border-line-strong bg-surface px-1 text-center font-mono text-xs font-semibold text-fg outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+                    className="w-10 h-7 rounded border border-line-strong bg-surface px-1 text-center font-mono text-xs font-semibold text-fg outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
                     aria-label="Jam"
                   />
                   <span className="font-bold text-fg-muted">:</span>
@@ -382,7 +382,7 @@ export const DateTimePicker: React.FC<DateTimePickerProps> = ({
                       applyTime(tempHour, val)
                     }}
                     onBlur={() => setTempMinute((prev) => prev.padStart(2, '0'))}
-                    className="w-10 h-7 rounded border border-line-strong bg-surface px-1 text-center font-mono text-xs font-semibold text-fg outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+                    className="w-10 h-7 rounded border border-line-strong bg-surface px-1 text-center font-mono text-xs font-semibold text-fg outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
                     aria-label="Menit"
                   />
                 </div>

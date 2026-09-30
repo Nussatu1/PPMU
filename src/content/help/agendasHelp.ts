@@ -71,7 +71,7 @@ export const agendasHelp: Record<string, HelpContent> = {
           'Tuliskan agenda pembahasan, susunan acara jam demi jam, daftar perlengkapan, atau instruksi kehadiran untuk peserta pada area teks.',
       },
       {
-        judul: 'Simpan Agenda',
+        judul: 'Buat Agenda',
         deskripsi:
           'Klik tombol "Buat" untuk menjadwalkan kegiatan, atau "Buat & Buat Lainnya" untuk langsung menyusun agenda berikutnya secara efisien.',
       },
@@ -105,9 +105,9 @@ export const agendasHelp: Record<string, HelpContent> = {
           'Tambahkan catatan hasil notulensi ringkas atau perubahan susunan pembicara pada kolom deskripsi.',
       },
       {
-        judul: 'Simpan Pembaruan',
+        judul: 'Perbarui Agenda',
         deskripsi:
-          'Klik tombol "Perbarui" di sudut bawah halaman untuk menyimpan perubahan jadwal ke seluruh sistem.',
+          'Klik tombol "Perbarui" di sudut bawah halaman untuk memperbarui data jadwal di seluruh sistem.',
       },
     ],
     tips: [

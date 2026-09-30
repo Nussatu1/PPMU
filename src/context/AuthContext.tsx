@@ -111,7 +111,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     if (currentOrganization) {
       const orgLabel = currentOrganization.short_name || currentOrganization.name
-      document.title = `${orgLabel} — My Tafrih`
+      document.title = `${orgLabel} - My Tafrih`
     } else {
       document.title = 'My Tafrih'
     }

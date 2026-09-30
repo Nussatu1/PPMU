@@ -81,7 +81,7 @@ export const reportsHelp: Record<string, HelpContent> = {
           'Berikan saran konkrit bagi pimpinan atau seksi pelaksana mengenai langkah mitigasi atau program kelanjutan yang perlu diagendakan.',
       },
       {
-        judul: 'Simpan Laporan Evaluasi',
+        judul: 'Buat Laporan Evaluasi',
         deskripsi:
           'Klik tombol "Buat" untuk menerbitkan dokumen laporan ke dalam arsip resmi organisasi.',
       },

@@ -128,11 +128,17 @@ export const SettingsPage: React.FC = () => {
         {/* 2. Top Hero Card: Profil & Status Sesi Aktif */}
         <div className="p-5 rounded-xl border border-line bg-surface shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-5">
           <div className="flex items-center gap-4 min-w-0">
-            <img
-              src={user?.avatar_url || 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150'}
-              alt={user?.name || 'User'}
-              className="w-14 h-14 rounded-xl object-cover ring-2 ring-line shrink-0 shadow-xs"
-            />
+            {user?.avatar_url ? (
+              <img
+                src={user.avatar_url}
+                alt={user.name || 'User'}
+                className="w-14 h-14 rounded-xl object-cover ring-2 ring-line shrink-0 shadow-xs"
+              />
+            ) : (
+              <div className="w-14 h-14 rounded-xl bg-primary-500/10 text-primary-600 dark:text-primary-400 font-bold text-xl flex items-center justify-center ring-2 ring-line shrink-0 shadow-xs">
+                {(user?.name || 'A').charAt(0).toUpperCase()}
+              </div>
+            )}
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <h2 className="text-base font-bold text-fg truncate">
@@ -250,7 +256,7 @@ export const SettingsPage: React.FC = () => {
 
                 <div className="pt-4 border-t border-line flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <span className="text-[11px] text-fg-muted">
-                    Sandi baru langsung aktif saat disimpan.
+                    Sandi baru langsung aktif setelah diperbarui.
                   </span>
                   <Button
                     type="submit"
@@ -458,11 +464,17 @@ export const SettingsPage: React.FC = () => {
 
               <div className="p-5 space-y-4">
                 <div className="p-3.5 rounded-lg bg-surface-muted/50 border border-line/70 flex items-center gap-3.5">
-                  <img
-                    src={currentOrganization?.logo_url || 'https://images.unsplash.com/photo-1599305445671-ac291c95aaa9?w=120'}
-                    alt={currentOrganization?.name || 'Organisasi'}
-                    className="w-12 h-12 rounded-lg object-contain bg-white/50 p-1 border border-line/60 shrink-0"
-                  />
+                  {currentOrganization?.logo_url ? (
+                    <img
+                      src={currentOrganization.logo_url}
+                      alt={currentOrganization.name || 'Organisasi'}
+                      className="w-12 h-12 rounded-lg object-contain bg-white/50 p-1 border border-line/60 shrink-0"
+                    />
+                  ) : (
+                    <div className="w-12 h-12 rounded-lg bg-primary-500/10 text-primary-600 dark:text-primary-400 font-bold text-sm flex items-center justify-center border border-line/60 shrink-0">
+                      {(currentOrganization?.code || currentOrganization?.name || 'ORG').slice(0, 3).toUpperCase()}
+                    </div>
+                  )}
                   <div className="min-w-0">
                     <p className="text-xs text-fg-muted font-medium">Nama Resmi Lembaga</p>
                     <p className="text-sm font-bold text-fg truncate">

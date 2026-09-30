@@ -71,7 +71,7 @@ export const performanceHelp: Record<string, HelpContent> = {
           'Uraikan faktor pendukung, kendala yang dihadapi selama pelaksanaan, atau langkah antisipasi lanjutan jika target belum tercapai.',
       },
       {
-        judul: 'Simpan Capaian Kinerja',
+        judul: 'Buat Capaian Kinerja',
         deskripsi:
           'Klik tombol "Buat" untuk merekam indikator kinerja, atau "Buat & Buat Lainnya" untuk menambahkan indikator berikutnya secara berurutan.',
       },

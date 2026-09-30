@@ -77,9 +77,9 @@ export const financeHelp: Record<string, HelpContent> = {
           'Jelaskan rincian keperluan belanja secara transparan pada kolom textarea, termasuk nama toko/rekanan vendor, peruntukan barang/jasa, atau nomor faktur.',
       },
       {
-        judul: 'Simpan Pembukuan Transaksi',
+        judul: 'Buat Pembukuan Transaksi',
         deskripsi:
-          'Klik tombol "Buat" untuk menyimpan transaksi dan kembali ke daftar transaksi, atau tombol "Buat & Buat Lainnya" untuk membukukan pengeluaran berikutnya secara beruntun.',
+          'Klik tombol "Buat" untuk memproses transaksi dan kembali ke daftar transaksi, atau tombol "Buat & Buat Lainnya" untuk membukukan pengeluaran berikutnya secara beruntun.',
       },
     ],
     tips: [

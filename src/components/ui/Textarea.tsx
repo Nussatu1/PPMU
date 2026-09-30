@@ -71,7 +71,7 @@ export const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
             'bg-input-bg text-fg placeholder:text-fg-muted',
             error
               ? 'border-red-500 focus:border-red-500 focus:ring-2 focus:ring-red-500/20'
-              : 'border-line-strong hover:border-amber-500/40 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20',
+              : 'border-line-strong hover:border-primary-500/40 focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20',
             'focus:outline-none',
             'disabled:bg-surface-muted disabled:text-fg-muted disabled:cursor-not-allowed disabled:opacity-50',
             className

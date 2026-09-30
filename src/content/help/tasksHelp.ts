@@ -76,7 +76,7 @@ export const tasksHelp: Record<string, HelpContent> = {
           'Jelaskan ruang lingkup pekerjaan, kriteria keberhasilan output yang diharapkan, serta dokumen yang harus dilampirkan.',
       },
       {
-        judul: 'Simpan Penugasan',
+        judul: 'Buat Penugasan',
         deskripsi:
           'Klik tombol "Buat" untuk menerbitkan tugas ke sistem dan memunculkannya pada daftar tugas PIC terkait.',
       },

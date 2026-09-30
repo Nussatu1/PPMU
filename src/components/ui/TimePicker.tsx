@@ -56,11 +56,11 @@ export const TimePicker: React.FC<TimePickerProps> = ({
           'inline-flex items-center gap-1.5 rounded-lg border bg-surface px-2.5 py-1.5 shadow-2xs transition-colors',
           error
             ? 'border-red-500 ring-2 ring-red-500/20'
-            : 'border-line-strong hover:border-amber-500 focus-within:border-amber-500 focus-within:ring-2 focus-within:ring-amber-500/20',
+            : 'border-line-strong hover:border-primary-500 focus-within:border-primary-500 focus-within:ring-2 focus-within:ring-primary-500/20',
           disabled && 'opacity-50 cursor-not-allowed bg-surface-muted text-fg-muted'
         )}
       >
-        <HeroClock className="w-4 h-4 text-amber-500 shrink-0 select-none" />
+        <HeroClock className="w-4 h-4 text-primary-500 shrink-0 select-none" />
         <input
           id={inputId}
           type="text"

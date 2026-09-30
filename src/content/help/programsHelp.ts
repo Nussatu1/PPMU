@@ -72,7 +72,7 @@ export const programsHelp: Record<string, HelpContent> = {
           'Jelaskan latar belakang, tujuan sasaran, penerima manfaat, dan tolok ukur keberhasilan program pada area teks ringkas yang dapat memanjang otomatis (autoGrow).',
       },
       {
-        judul: 'Simpan Program Kerja',
+        judul: 'Buat Program Kerja',
         deskripsi:
           'Klik tombol "Buat" untuk memproses data dan kembali ke daftar program kerja, atau "Buat & Buat Lainnya" jika ingin mendaftarkan beberapa program kerja sekaligus.',
       },
@@ -106,9 +106,9 @@ export const programsHelp: Record<string, HelpContent> = {
           'Perbarui tanggal mulai dan tanggal selesai sesuai realitas kondisi pelaksanaan di lapangan menggunakan DatePicker.',
       },
       {
-        judul: 'Simpan Perubahan',
+        judul: 'Perbarui Program Kerja',
         deskripsi:
-          'Klik tombol "Perbarui" di bagian bawah formulir untuk menyimpan perubahan data ke sistem.',
+          'Klik tombol "Perbarui" di bagian bawah formulir untuk memproses dan memperbarui data di sistem.',
       },
     ],
     tips: [

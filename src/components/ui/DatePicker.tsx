@@ -305,7 +305,7 @@ export const DatePicker: React.FC<DatePickerProps> = ({
 
       <div className="relative">
         {name && <input type="hidden" name={name} value={currentVal} />}
-        {/* Custom Date Trigger — No Native <input type="date"> Anywhere in DOM */}
+        {/* Custom Date Trigger: No Native <input type="date"> Anywhere in DOM */}
         <button
           ref={triggerRef}
           id={pickerId}
@@ -321,13 +321,13 @@ export const DatePicker: React.FC<DatePickerProps> = ({
             error
               ? 'border-red-500 focus:ring-2 focus:ring-red-500/20'
               : isOpen
-              ? 'border-amber-500 ring-2 ring-amber-500/20'
-              : 'border-line-strong hover:border-line-strong focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20',
+              ? 'border-primary-500 ring-2 ring-primary-500/20'
+              : 'border-line-strong hover:border-line-strong focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20',
             disabled && 'opacity-50 cursor-not-allowed bg-surface-muted text-fg-muted'
           )}
         >
           <div className="flex items-center gap-2 truncate">
-            <HeroCalendar className="w-4 h-4 text-amber-500 shrink-0" />
+            <HeroCalendar className="w-4 h-4 text-primary-500 shrink-0" />
             {displayText ? (
               <span className="font-medium text-fg truncate">{displayText}</span>
             ) : (
