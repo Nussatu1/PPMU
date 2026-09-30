@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import {
   HeroBars3,
   HeroChevronLeft,
@@ -30,6 +30,33 @@ interface TopbarProps {
   onOpenGlobalSearch: () => void
 }
 
+const getMobilePageTitle = (pathname: string): string => {
+  if (pathname === '/') return ''
+  if (pathname.startsWith('/programs/create')) return 'Buat Program'
+  if (pathname.includes('/programs/') && pathname.endsWith('/edit')) return 'Perbarui Program'
+  if (pathname.startsWith('/programs')) return 'Program Kerja'
+  if (pathname.startsWith('/agendas/create')) return 'Buat Agenda'
+  if (pathname.includes('/agendas/') && pathname.endsWith('/edit')) return 'Perbarui Agenda'
+  if (pathname.startsWith('/agendas')) return 'Agenda'
+  if (pathname.startsWith('/performance/create')) return 'Buat Kinerja'
+  if (pathname.startsWith('/performance')) return 'Kinerja'
+  if (pathname.startsWith('/finance/create')) return 'Catat Transaksi'
+  if (pathname.startsWith('/finance')) return 'Keuangan'
+  if (pathname.startsWith('/reports/create')) return 'Buat Laporan'
+  if (pathname.startsWith('/reports')) return 'Laporan'
+  if (pathname.startsWith('/tasks/create')) return 'Buat Tugas'
+  if (pathname.startsWith('/tasks')) return 'Tugas'
+  if (pathname.startsWith('/structures')) return 'Struktur'
+  if (pathname.startsWith('/organizations')) return 'Organisasi'
+  if (pathname.startsWith('/accounts')) return 'Akun Pengguna'
+  if (pathname.startsWith('/roles/create')) return 'Buat Peran'
+  if (pathname.includes('/roles/') && pathname.endsWith('/edit')) return 'Perbarui Peran'
+  if (pathname.startsWith('/roles')) return 'Peran & Izin'
+  if (pathname.startsWith('/audit-logs')) return 'Audit Trail'
+  if (pathname.startsWith('/settings')) return 'Pengaturan'
+  return ''
+}
+
 export const Topbar: React.FC<TopbarProps> = ({
   onToggleMobileSidebar,
   isSidebarCollapsed,
@@ -41,6 +68,10 @@ export const Topbar: React.FC<TopbarProps> = ({
   const { success } = useToast()
   const { openHelp } = useHelp()
   const navigate = useNavigate()
+  const location = useLocation()
+
+  const isRootPage = location.pathname === '/'
+  const mobileTitle = getMobilePageTitle(location.pathname)
 
   const [showNotifications, setShowNotifications] = useState(false)
   const [notifications, setNotifications] = useState<Notification[]>([])
@@ -112,17 +143,43 @@ export const Topbar: React.FC<TopbarProps> = ({
     <header
       className="h-16 flex items-center justify-between gap-4 px-4 sm:px-6 lg:px-8 shrink-0 sticky top-0 z-20 bg-topbar shadow-sm ring-1 ring-line transition-colors"
     >
-      {/* Left: Sidebar Toggles & Global Search */}
-      <div className="flex items-center gap-2 sm:gap-3">
-        {/* Mobile menu */}
-        <button
-          type="button"
-          onClick={onToggleMobileSidebar}
-          className="lg:hidden p-2 text-fg-muted hover:text-fg hover:bg-hover-bg rounded-lg transition-colors cursor-pointer"
-          aria-label="Open sidebar"
-        >
-          <HeroBars3 className="w-5 h-5" />
-        </button>
+      {/* Left: Sidebar Toggles, Mobile Back Button & Global Search */}
+      <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+        {/* Mobile Back Button (on subpages) */}
+        {!isRootPage ? (
+          <button
+            type="button"
+            onClick={() => navigate(-1)}
+            className="lg:hidden inline-flex items-center gap-1 py-1.5 px-2 -ml-2 text-primary-600 dark:text-primary-400 font-semibold text-xs rounded-xl active:bg-hover-bg transition-colors cursor-pointer shrink-0"
+            aria-label="Kembali ke halaman sebelumnya"
+          >
+            <HeroChevronLeft className="w-4 h-4 stroke-[2.5]" />
+            <span>Kembali</span>
+          </button>
+        ) : (
+          /* Mobile Menu Toggle Button (on root/dashboard) */
+          <button
+            type="button"
+            onClick={onToggleMobileSidebar}
+            className="lg:hidden p-2 text-fg-muted hover:text-fg hover:bg-hover-bg rounded-lg transition-colors cursor-pointer shrink-0"
+            aria-label="Buka menu navigasi"
+          >
+            <HeroBars3 className="w-5 h-5" />
+          </button>
+        )}
+
+        {/* Mobile Section / Page Title */}
+        {!isRootPage && mobileTitle ? (
+          <span className="lg:hidden text-xs font-bold text-fg truncate max-w-[140px] sm:max-w-[220px]">
+            {mobileTitle}
+          </span>
+        ) : (
+          isRootPage && currentOrganization && (
+            <span className="lg:hidden text-xs font-bold text-fg truncate max-w-[140px] sm:max-w-[220px]">
+              {currentOrganization.short_name || currentOrganization.name}
+            </span>
+          )
+        )}
 
         {/* Desktop sidebar toggle */}
         <Tooltip content={isSidebarCollapsed ? 'Buka bilah samping' : 'Tutup bilah samping'}>
@@ -140,7 +197,7 @@ export const Topbar: React.FC<TopbarProps> = ({
           </button>
         </Tooltip>
 
-        {/* Global Search button */}
+        {/* Desktop Global Search button */}
         <button
           type="button"
           onClick={onOpenGlobalSearch}
@@ -156,6 +213,15 @@ export const Topbar: React.FC<TopbarProps> = ({
 
       {/* Right: Actions & User Profile */}
       <div className="flex items-center gap-1.5 sm:gap-2">
+        {/* Mobile Search Button (Header quick-access) */}
+        <button
+          type="button"
+          onClick={onOpenGlobalSearch}
+          aria-label="Pencarian Cepat"
+          className="md:hidden w-9 h-9 inline-flex items-center justify-center rounded-lg text-fg-muted hover:text-fg hover:bg-hover-bg transition-colors cursor-pointer shrink-0"
+        >
+          <HeroMagnifyingGlass className="w-5 h-5" />
+        </button>
 
         {/* Database Notifications Popover (Bell) */}
         <div className="relative inline-flex items-center shrink-0" ref={notificationRef}>

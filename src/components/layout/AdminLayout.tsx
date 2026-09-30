@@ -3,6 +3,7 @@ import { Outlet, Navigate } from 'react-router-dom'
 import { Sidebar } from './Sidebar'
 import { Topbar } from './Topbar'
 import { GlobalSearchModal } from './GlobalSearchModal'
+import { MobileBottomNav } from './MobileBottomNav'
 import { HelpDrawer } from '@/components/help/HelpDrawer'
 import { useAuth } from '@/context/AuthContext'
 
@@ -43,11 +44,17 @@ export const AdminLayout: React.FC = () => {
           onOpenGlobalSearch={() => setIsGlobalSearchOpen(true)}
         />
 
-        {/* Page content */}
-        <main className="flex-1 min-w-0 w-full flex flex-col">
+        {/* Page content - pb-20 lg:pb-0 prevents content from being hidden behind iOS-style bottom bar */}
+        <main className="flex-1 min-w-0 w-full flex flex-col pb-20 lg:pb-0">
           <Outlet />
         </main>
       </div>
+
+      {/* iOS-Style Bottom Navigation Tab Bar (Mobile only: lg:hidden) */}
+      <MobileBottomNav
+        onOpenGlobalSearch={() => setIsGlobalSearchOpen(true)}
+        onToggleMobileSidebar={() => setIsMobileSidebarOpen(prev => !prev)}
+      />
 
       {/* Global search */}
       <GlobalSearchModal

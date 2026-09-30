@@ -9,6 +9,12 @@ import {
   HeroBuildingOffice,
   HeroPlus,
   HeroUsers,
+  HeroSquares2X2,
+  HeroChartBar,
+  HeroCheckCircle,
+  HeroShieldCheck,
+  HeroClock,
+  HeroCog6Tooth,
 } from '@/components/icons/HeroIcons'
 import { Breadcrumb } from '@/components/layout/Breadcrumb'
 import { Button } from '@/components/ui/Button'
@@ -16,7 +22,7 @@ import { ChartWidget } from '@/components/widgets/ChartWidget'
 import { RecentAgendasWidget } from '@/components/widgets/RecentAgendasWidget'
 import { useAuth } from '@/context/AuthContext'
 import { dataService } from '@/lib/dataService'
-import { formatCurrency } from '@/lib/utils'
+import { formatCurrency, cn } from '@/lib/utils'
 import { t } from '@/i18n'
 import type { Agenda } from '@/types/database'
 
@@ -25,6 +31,8 @@ import { PageContainer } from '@/components/layout/PageContainer'
 export const DashboardPage: React.FC = () => {
   const { user, currentOrganization } = useAuth()
   const navigate = useNavigate()
+
+  const isSuperAdmin = user?.is_superadmin || false
 
   const [ecoStats, setEcoStats] = useState({
     totalPrograms: 3,
@@ -67,6 +75,92 @@ export const DashboardPage: React.FC = () => {
     fetchData()
   }, [currentOrganization?.id, user])
 
+  // Navigasi Menu Cepat Mobile (Sidebar dijadikan menu berlabel minimal di layar utama)
+  const mobileNavItems = [
+    {
+      label: 'Struktur',
+      href: '/structures',
+      icon: HeroSquares2X2,
+      color: 'text-primary-600 dark:text-primary-400',
+    },
+    {
+      label: 'Program',
+      href: '/programs',
+      icon: HeroBriefcase,
+      badge: ecoStats.totalPrograms ? String(ecoStats.totalPrograms) : undefined,
+      color: 'text-primary-600 dark:text-primary-400',
+    },
+    {
+      label: 'Agenda',
+      href: '/agendas',
+      icon: HeroCalendar,
+      badge: ecoStats.inProgressAgendas ? String(ecoStats.inProgressAgendas) : undefined,
+      color: 'text-sky-600 dark:text-sky-400',
+    },
+    {
+      label: 'Kinerja',
+      href: '/performance',
+      icon: HeroChartBar,
+      color: 'text-purple-600 dark:text-purple-400',
+    },
+    {
+      label: 'Keuangan',
+      href: '/finance',
+      icon: HeroCurrencyDollar,
+      color: 'text-emerald-600 dark:text-emerald-400',
+    },
+    {
+      label: 'Laporan',
+      href: '/reports',
+      icon: HeroClipboardDocumentList,
+      badge: ecoStats.pendingReports ? String(ecoStats.pendingReports) : undefined,
+      badgeDanger: true,
+      color: 'text-rose-600 dark:text-rose-400',
+    },
+    {
+      label: 'Tugas',
+      href: '/tasks',
+      icon: HeroCheckCircle,
+      badge: ecoStats.pendingTasks ? String(ecoStats.pendingTasks) : undefined,
+      color: 'text-blue-600 dark:text-blue-400',
+    },
+    ...(isSuperAdmin
+      ? [
+          {
+            label: 'Organisasi',
+            href: '/organizations',
+            icon: HeroBuildingOffice,
+            badge: '3',
+            color: 'text-primary-600 dark:text-primary-400',
+          },
+          {
+            label: 'Akun',
+            href: '/accounts',
+            icon: HeroUsers,
+            color: 'text-blue-600 dark:text-blue-400',
+          },
+          {
+            label: 'Peran',
+            href: '/roles',
+            icon: HeroShieldCheck,
+            color: 'text-emerald-600 dark:text-emerald-400',
+          },
+          {
+            label: 'Audit',
+            href: '/audit-logs',
+            icon: HeroClock,
+            color: 'text-fg-muted',
+          },
+        ]
+      : []),
+    {
+      label: 'Pengaturan',
+      href: '/settings',
+      icon: HeroCog6Tooth,
+      color: 'text-fg-muted',
+    },
+  ]
+
   return (
     <PageContainer variant="wide">
       {/* Header with Breadcrumb & Quick Action Buttons */}
@@ -90,8 +184,8 @@ export const DashboardPage: React.FC = () => {
           </p>
         </div>
 
-        {/* Action CTAs */}
-        <div className="flex items-center gap-2 flex-wrap">
+        {/* Action CTAs (Desktop / Tablet) */}
+        <div className="hidden sm:flex items-center gap-2 flex-wrap">
           <Button
             variant="secondary"
             icon={<HeroCalendar className="w-4 h-4" />}
@@ -106,6 +200,48 @@ export const DashboardPage: React.FC = () => {
           >
             Program Kerja
           </Button>
+        </div>
+      </div>
+
+      {/* Mobile Springboard / Quick Launcher (Sidebar dijadikan Menu di Halaman Utama dengan Label Minimal - Mobile Only) */}
+      <div className="block lg:hidden -mt-1">
+        <div className="p-3.5 sm:p-4 rounded-2xl bg-surface border border-line shadow-xs">
+          <div className="flex items-center justify-between mb-3 px-0.5">
+            <span className="text-[11px] font-bold text-fg-muted uppercase tracking-wider">
+              Menu & Modul
+            </span>
+            <span className="text-[11px] text-primary-600 dark:text-primary-400 font-semibold">
+              {mobileNavItems.length} Akses Cepat
+            </span>
+          </div>
+
+          <div className="grid grid-cols-4 gap-y-3.5 gap-x-2">
+            {mobileNavItems.map((item) => (
+              <button
+                key={item.href}
+                type="button"
+                onClick={() => navigate(item.href)}
+                className="flex flex-col items-center gap-1.5 group cursor-pointer active:scale-90 transition-transform select-none"
+              >
+                <div className="relative w-12 h-12 rounded-2xl bg-surface-muted/90 ring-1 ring-line group-hover:ring-primary-500/50 flex items-center justify-center shadow-2xs transition-colors">
+                  <item.icon className={cn('w-5 h-5', item.color)} />
+                  {item.badge && (
+                    <span
+                      className={cn(
+                        'absolute -top-1 -right-1 px-1.5 min-w-4 h-4 rounded-full text-[10px] font-bold text-white flex items-center justify-center ring-2 ring-surface shadow-xs',
+                        item.badgeDanger ? 'bg-red-500' : 'bg-primary-500'
+                      )}
+                    >
+                      {item.badge}
+                    </span>
+                  )}
+                </div>
+                <span className="text-[11px] font-medium text-fg group-hover:text-primary-600 dark:group-hover:text-primary-400 text-center truncate w-full px-0.5">
+                  {item.label}
+                </span>
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
