@@ -86,6 +86,7 @@ import {
   resolveOrganizationScope,
   type OrganizationTreeNode,
 } from './hierarchyService'
+import { generateUUID } from './uuid'
 
 // ==============================================================================
 // STAGE 9: LOCAL DEMO DATABASE PERSISTENCE & ACCOUNT ISOLATION LAYER
@@ -297,7 +298,7 @@ function logAudit(
   newValues?: Record<string, unknown>
 ): void {
   const newLog: AuditLog = {
-    id: crypto.randomUUID(),
+    id: generateUUID(),
     organization_id: organizationId,
     user_id: user?.id || 'system',
     user_name: user?.name || 'Sistem',
@@ -416,7 +417,7 @@ export const dataService = {
   async createUser(data: Omit<User, 'id' | 'created_at'>): Promise<User> {
     const newUser: User = {
       ...data,
-      id: crypto.randomUUID(),
+      id: generateUUID(),
       created_at: new Date().toISOString(),
     }
     if (isSupabaseConfigured && supabase) {
@@ -545,7 +546,7 @@ export const dataService = {
   async createCategory(data: Omit<Category, 'id' | 'created_at'>): Promise<Category> {
     const newCat: Category = {
       ...data,
-      id: crypto.randomUUID(),
+      id: generateUUID(),
       created_at: new Date().toISOString(),
     }
     if (isSupabaseConfigured && supabase) {
@@ -643,7 +644,7 @@ export const dataService = {
   async createBrand(data: Omit<Brand, 'id' | 'created_at'>): Promise<Brand> {
     const newBrand: Brand = {
       ...data,
-      id: crypto.randomUUID(),
+      id: generateUUID(),
       created_at: new Date().toISOString(),
     }
     if (isSupabaseConfigured && supabase) {
@@ -702,14 +703,14 @@ export const dataService = {
     await delay()
     const newAddress: Address = {
       ...addressData,
-      id: crypto.randomUUID(),
+      id: generateUUID(),
       created_at: new Date().toISOString(),
     }
     localAddresses = [newAddress, ...localAddresses]
     setStorage('addresses', localAddresses)
 
     const newAddressable: Addressable = {
-      id: crypto.randomUUID(),
+      id: generateUUID(),
       address_id: newAddress.id,
       addressable_id: brandId,
       addressable_type: 'Brand',
@@ -762,7 +763,7 @@ export const dataService = {
   async createProduct(data: Omit<Product, 'id' | 'created_at' | 'category' | 'brand'>): Promise<Product> {
     const newProduct: Product = {
       ...data,
-      id: crypto.randomUUID(),
+      id: generateUUID(),
       created_at: new Date().toISOString(),
     }
     if (isSupabaseConfigured && supabase) {
@@ -823,7 +824,7 @@ export const dataService = {
     await delay()
     const newComment: Comment = {
       ...data,
-      id: crypto.randomUUID(),
+      id: generateUUID(),
       commentable_id: productId,
       commentable_type: 'Product',
       created_at: new Date().toISOString(),
@@ -873,7 +874,7 @@ export const dataService = {
   async createCustomer(data: Omit<Customer, 'id' | 'created_at' | 'orders_count' | 'total_spent'>): Promise<Customer> {
     const newCust: Customer = {
       ...data,
-      id: crypto.randomUUID(),
+      id: generateUUID(),
       created_at: new Date().toISOString(),
     }
     if (isSupabaseConfigured && supabase) {
@@ -939,14 +940,14 @@ export const dataService = {
     await delay()
     const newAddress: Address = {
       ...addressData,
-      id: crypto.randomUUID(),
+      id: generateUUID(),
       created_at: new Date().toISOString(),
     }
     localAddresses = [newAddress, ...localAddresses]
     setStorage('addresses', localAddresses)
 
     const newAddressable: Addressable = {
-      id: crypto.randomUUID(),
+      id: generateUUID(),
       address_id: newAddress.id,
       addressable_id: customerId,
       addressable_type: 'Customer',
@@ -1001,7 +1002,7 @@ export const dataService = {
   async createOrder(data: Omit<Order, 'id' | 'created_at' | 'customer' | 'address' | 'payments'>): Promise<Order> {
     const newOrder: Order = {
       ...data,
-      id: crypto.randomUUID(),
+      id: generateUUID(),
       created_at: new Date().toISOString(),
     }
     if (isSupabaseConfigured && supabase) {
@@ -1059,7 +1060,7 @@ export const dataService = {
     await delay()
     const newAddress: Address = {
       ...addressData,
-      id: crypto.randomUUID(),
+      id: generateUUID(),
       created_at: new Date().toISOString(),
     }
     localAddresses = [newAddress, ...localAddresses]
@@ -1070,7 +1071,7 @@ export const dataService = {
       (a) => !(a.addressable_type === 'Order' && a.addressable_id === orderId)
     )
     const newAddressable: Addressable = {
-      id: crypto.randomUUID(),
+      id: generateUUID(),
       address_id: newAddress.id,
       addressable_id: orderId,
       addressable_type: 'Order',
@@ -1091,7 +1092,7 @@ export const dataService = {
     await delay()
     const newPayment: Payment = {
       ...data,
-      id: crypto.randomUUID(),
+      id: generateUUID(),
       order_id: orderId,
       created_at: new Date().toISOString(),
     }
@@ -1290,7 +1291,7 @@ export const dataService = {
     await delay(120)
     const newOrg: Organization = {
       ...data,
-      id: crypto.randomUUID(),
+      id: generateUUID(),
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }
@@ -1353,7 +1354,7 @@ export const dataService = {
     await delay(100)
     const newPeriod: OrganizationPeriod = {
       ...data,
-      id: crypto.randomUUID(),
+      id: generateUUID(),
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }
@@ -1483,7 +1484,7 @@ export const dataService = {
     await delay(120)
     const newMem: OrganizationMembership = {
       ...data,
-      id: crypto.randomUUID(),
+      id: generateUUID(),
       created_at: new Date().toISOString(),
       joined_at: new Date().toISOString(),
     }
@@ -1577,7 +1578,7 @@ export const dataService = {
 
     const resolvedLevel = level || 'anggota'
     const newMem: OrganizationMembership = {
-      id: crypto.randomUUID(),
+      id: generateUUID(),
       user_id: userId,
       organization_id: orgId,
       role_id: roleId,
@@ -1626,7 +1627,7 @@ export const dataService = {
     await delay(120)
     const newRole: RoleEntity = {
       ...data,
-      id: crypto.randomUUID(),
+      id: generateUUID(),
       created_at: new Date().toISOString(),
     }
     localRoles = [newRole, ...localRoles]
@@ -1673,7 +1674,7 @@ export const dataService = {
     if (!sourceRole) throw new Error('Peran sumber tidak ditemukan')
 
     const newRole: RoleEntity = {
-      id: `role-custom-${crypto.randomUUID().slice(0, 8)}`,
+      id: `role-custom-${generateUUID().slice(0, 8)}`,
       name: newName,
       slug: newName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''),
       description: `Duplikasi dari ${sourceRole.name}`,
@@ -1709,7 +1710,7 @@ export const dataService = {
     await delay(120)
     const newStructure: Structure = {
       ...data,
-      id: crypto.randomUUID(),
+      id: generateUUID(),
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }
@@ -1772,7 +1773,7 @@ export const dataService = {
     await delay(100)
     const newSection: Section = {
       ...data,
-      id: crypto.randomUUID(),
+      id: generateUUID(),
       created_at: new Date().toISOString(),
     }
     localSections = [...localSections, newSection]
@@ -1833,7 +1834,7 @@ export const dataService = {
     await delay(100)
     const newPrs: Personnel = {
       ...data,
-      id: crypto.randomUUID(),
+      id: generateUUID(),
       created_at: new Date().toISOString(),
     }
     localPersonnels = [newPrs, ...localPersonnels]
@@ -2001,7 +2002,7 @@ export const dataService = {
     await delay(120)
     const newProg: Program = {
       ...data,
-      id: crypto.randomUUID(),
+      id: generateUUID(),
       created_by: user?.id || data.created_by,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
@@ -2013,7 +2014,7 @@ export const dataService = {
     const allocated = newProg.budget_allocated || newProg.budget_planned || 0
     if (allocated > 0) {
       const newBudget: Budget = {
-        id: crypto.randomUUID(),
+        id: generateUUID(),
         organization_id: newProg.organization_id,
         program_id: newProg.id,
         status: 'approved',
@@ -2174,7 +2175,7 @@ export const dataService = {
     await delay(100)
     const newAgenda: Agenda = {
       ...data,
-      id: crypto.randomUUID(),
+      id: generateUUID(),
       created_at: new Date().toISOString(),
     }
     localAgendas = [newAgenda, ...localAgendas]
@@ -2282,7 +2283,7 @@ export const dataService = {
     const newPerf: Performance = {
       ...data,
       percentage,
-      id: crypto.randomUUID(),
+      id: generateUUID(),
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }
@@ -2363,7 +2364,7 @@ export const dataService = {
     await delay(100)
     const newBudget: Budget = {
       ...data,
-      id: crypto.randomUUID(),
+      id: generateUUID(),
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }
@@ -2436,7 +2437,7 @@ export const dataService = {
     await delay(100)
     const newTx: Transaction = {
       ...data,
-      id: crypto.randomUUID(),
+      id: generateUUID(),
       created_at: new Date().toISOString(),
     }
     localTransactions = [newTx, ...localTransactions]
@@ -2565,7 +2566,7 @@ export const dataService = {
     await delay(100)
     const newReport: Report = {
       ...data,
-      id: crypto.randomUUID(),
+      id: generateUUID(),
       created_at: new Date().toISOString(),
       submitted_at: data.status === 'submitted' ? new Date().toISOString() : undefined,
     }
@@ -2579,7 +2580,7 @@ export const dataService = {
       )
       if (ketuaMem) {
         const notif: Notification = {
-          id: crypto.randomUUID(),
+          id: generateUUID(),
           user_id: ketuaMem.user_id,
           organization_id: newReport.organization_id,
           title: 'Laporan Baru Memerlukan Peninjauan',
@@ -2654,7 +2655,7 @@ export const dataService = {
     const authorUser = localUsers.find((u) => u.id === report.author_id)
     if (authorUser) {
       const notif: Notification = {
-        id: crypto.randomUUID(),
+        id: generateUUID(),
         user_id: report.author_id,
         organization_id: report.organization_id,
         title: nextStatus === 'approved' ? 'Laporan Telah Disetujui' : 'Catatan Revisi Laporan',
@@ -2750,7 +2751,7 @@ export const dataService = {
     await delay(100)
     const newTask: Task = {
       ...data,
-      id: crypto.randomUUID(),
+      id: generateUUID(),
       created_at: new Date().toISOString(),
     }
     localTasks = [newTask, ...localTasks]

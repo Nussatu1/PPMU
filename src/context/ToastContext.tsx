@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useCallback } from 'react'
 import { HeroCheckCircle, HeroExclamationTriangle, HeroExclamationCircle, HeroInformationCircle, HeroXMark } from '@/components/icons/HeroIcons'
+import { generateUUID } from '@/lib/uuid'
 
 export type ToastType = 'success' | 'error' | 'warning' | 'info'
 
@@ -23,18 +24,12 @@ const ToastContext = createContext<ToastContextType | undefined>(undefined)
 
 /**
  * Safe Toast UI Identifier Generator.
- * Uses crypto.randomUUID() when available (secure contexts HTTPS / localhost).
- * Falls back to timestamp + random string in insecure contexts (e.g. mobile LAN IP)
- * or older browser engines lacking Web Crypto randomUUID.
+ * Uses centralized generateUUID() with full RFC 4122 v4 compatibility.
  *
  * NOTE: For UI notification queue only. Never use for cryptographic or security tokens.
  */
-export const generateToastId = (cryptoInstance?: Crypto | null): string => {
-  const c = cryptoInstance !== undefined ? cryptoInstance : (typeof crypto !== 'undefined' ? crypto : undefined)
-  if (c && typeof c.randomUUID === 'function') {
-    return c.randomUUID()
-  }
-  return `toast-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
+export const generateToastId = (): string => {
+  return generateUUID()
 }
 
 export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
