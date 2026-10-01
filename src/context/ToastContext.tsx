@@ -21,6 +21,22 @@ interface ToastContextType {
 
 const ToastContext = createContext<ToastContextType | undefined>(undefined)
 
+/**
+ * Safe Toast UI Identifier Generator.
+ * Uses crypto.randomUUID() when available (secure contexts HTTPS / localhost).
+ * Falls back to timestamp + random string in insecure contexts (e.g. mobile LAN IP)
+ * or older browser engines lacking Web Crypto randomUUID.
+ *
+ * NOTE: For UI notification queue only. Never use for cryptographic or security tokens.
+ */
+export const generateToastId = (cryptoInstance?: Crypto | null): string => {
+  const c = cryptoInstance !== undefined ? cryptoInstance : (typeof crypto !== 'undefined' ? crypto : undefined)
+  if (c && typeof c.randomUUID === 'function') {
+    return c.randomUUID()
+  }
+  return `toast-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
+}
+
 export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [toasts, setToasts] = useState<ToastItem[]>([])
 
@@ -30,7 +46,7 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const addToast = useCallback(
     (toast: Omit<ToastItem, 'id'>) => {
-      const id = crypto.randomUUID()
+      const id = generateToastId()
       const duration = toast.duration ?? 4000
       const newToast: ToastItem = { ...toast, id }
       setToasts((prev) => [...prev, newToast])

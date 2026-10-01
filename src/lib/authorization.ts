@@ -360,7 +360,7 @@ export function canTransitionReportStatus(
 
   const validTransitions: Record<ReportStatus, ReportStatus[]> = {
     draft: ['submitted'],
-    submitted: ['in_review'],
+    submitted: ['in_review', 'approved', 'revised'],
     in_review: ['approved', 'revised'],
     revised: ['submitted'],
     approved: ['archived'],
