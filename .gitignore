@@ -32,6 +32,7 @@ Demos/
 graphify-out/
 .mobile-audit/
 *.xlsx
+!public/format-excel-keuangan.xlsx
 .env
 .env.local
 .env.*.local
