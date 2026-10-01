@@ -116,7 +116,7 @@ export const ReportCreatePage: React.FC = () => {
               { label: 'Susun Baru' },
             ]}
           />
-          <h1 className="text-2xl font-bold tracking-tight text-fg">
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-fg">
             Susun Laporan Kinerja Baru
           </h1>
           <p className="text-sm text-fg-muted">
@@ -127,6 +127,7 @@ export const ReportCreatePage: React.FC = () => {
           variant="secondary"
           icon={<HeroArrowLeft className="w-4 h-4" />}
           onClick={() => navigate('/reports')}
+          className="hidden sm:inline-flex"
         >
           Kembali
         </Button>

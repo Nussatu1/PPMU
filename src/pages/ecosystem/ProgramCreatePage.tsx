@@ -13,7 +13,9 @@ import { NumberInput } from '@/components/ui/NumberInput'
 import { useToast } from '@/context/ToastContext'
 import { useAuth } from '@/context/AuthContext'
 import { dataService } from '@/lib/dataService'
+import { UnitAssignmentSelector } from '@/components/organization/UnitAssignmentSelector'
 import type { Section as OrgSection, Personnel } from '@/types/database'
+
 import {
   HeroBriefcase,
   HeroArrowLeft,
@@ -22,7 +24,9 @@ import {
   HeroCurrencyDollar,
   HeroCalendar,
   HeroDocumentText,
+  HeroUserGroup,
 } from '@/components/icons/HeroIcons'
+
 
 type FormData = {
   title: string
@@ -34,7 +38,9 @@ type FormData = {
   target_kpi: string
   start_date: string
   end_date: string
+  assigned_to_organization_id: string | null
 }
+
 
 const emptyForm = (secs: OrgSection[], pers: Personnel[]): FormData => ({
   title: '',
@@ -46,7 +52,9 @@ const emptyForm = (secs: OrgSection[], pers: Personnel[]): FormData => ({
   target_kpi: '',
   start_date: new Date().toISOString().split('T')[0],
   end_date: '',
+  assigned_to_organization_id: null,
 })
+
 
 export const ProgramCreatePage: React.FC = () => {
   const navigate = useNavigate()
@@ -122,10 +130,10 @@ export const ProgramCreatePage: React.FC = () => {
               { label: 'Rancang Baru' },
             ]}
           />
-          <h1 className="text-2xl font-bold tracking-tight text-fg">
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-fg">
             Rancang Program Kerja Baru
           </h1>
-          <p className="text-sm text-fg-muted">
+          <p className="hidden sm:block text-xs sm:text-sm text-fg-muted">
             Tentukan rencana program kerja organisasi, target indikator KPI, alokasi anggaran, dan jadwal pelaksanaan.
           </p>
         </div>
@@ -133,7 +141,7 @@ export const ProgramCreatePage: React.FC = () => {
           variant="secondary"
           icon={<HeroArrowLeft className="w-4 h-4" />}
           onClick={() => navigate('/programs')}
-          className="shrink-0 self-start sm:self-auto"
+          className="hidden sm:inline-flex shrink-0 self-start sm:self-auto"
         >
           Kembali
         </Button>
@@ -267,6 +275,21 @@ export const ProgramCreatePage: React.FC = () => {
                 placeholder="Jelaskan tujuan strategis, output yang diharapkan, dan mekanisme pelaksanaan..."
               />
             </Section>
+
+            {/* Penugasan Unit (Stage 6) */}
+            <Section
+              title="Penugasan Unit"
+              description="Delegasikan program ini ke unit organisasi turunan yang bertanggung jawab atas pelaksanaannya."
+              icon={<HeroUserGroup className="w-5 h-5" />}
+              columns={1}
+              className="col-span-full"
+            >
+              <UnitAssignmentSelector
+                value={formData.assigned_to_organization_id}
+                onChange={(orgId) => set('assigned_to_organization_id', orgId as unknown as string)}
+                helperText="Hanya unit turunan yang sah yang dapat dipilih. Penugasan bersifat opsional."
+              />
+            </Section>
           </SectionGrid>
 
           {/* Actions Bar */}
@@ -275,15 +298,17 @@ export const ProgramCreatePage: React.FC = () => {
               type="button"
               variant="secondary"
               onClick={() => navigate('/programs')}
+              className="w-full sm:w-auto justify-center"
             >
               Batal
             </Button>
-            <div className="flex items-center gap-3">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 w-full sm:w-auto">
               <Button
                 type="button"
                 variant="secondary"
                 disabled={isSaving}
                 onClick={(e) => handleSave(e as unknown as React.FormEvent, true)}
+                className="w-full sm:w-auto justify-center"
               >
                 <HeroPlus className="w-4 h-4 mr-1.5" />
                 Buat & Buat Lainnya
@@ -292,6 +317,7 @@ export const ProgramCreatePage: React.FC = () => {
                 type="submit"
                 variant="primary"
                 disabled={isSaving}
+                className="w-full sm:w-auto justify-center"
               >
                 <HeroCheck className="w-4 h-4 mr-1.5" />
                 {isSaving ? 'Memproses...' : 'Buat'}

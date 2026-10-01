@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { Outlet, Navigate } from 'react-router-dom'
 import { Sidebar } from './Sidebar'
 import { Topbar } from './Topbar'
+import { MobileAppHeader } from './MobileAppHeader'
 import { GlobalSearchModal } from './GlobalSearchModal'
 import { MobileBottomNav } from './MobileBottomNav'
 import { HelpDrawer } from '@/components/help/HelpDrawer'
@@ -9,7 +10,6 @@ import { useAuth } from '@/context/AuthContext'
 
 export const AdminLayout: React.FC = () => {
   const { isAuthenticated, isLoading } = useAuth()
-  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false)
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
   const [isGlobalSearchOpen, setIsGlobalSearchOpen] = useState(false)
 
@@ -27,34 +27,38 @@ export const AdminLayout: React.FC = () => {
 
   return (
     <div className="min-h-screen flex antialiased bg-surface-muted">
-      {/* Sidebar */}
+      {/* Desktop Persistent Sidebar (>= lg) */}
       <Sidebar
-        isMobileOpen={isMobileSidebarOpen}
-        onMobileClose={() => setIsMobileSidebarOpen(false)}
+        isMobileOpen={false}
+        onMobileClose={() => {}}
         isCollapsed={isSidebarCollapsed}
         onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
       />
 
       {/* Main column */}
       <div className="flex flex-col flex-1 min-w-0 w-full transition-all duration-300 ease-in-out">
+        {/* Desktop topbar (>= lg) */}
         <Topbar
-          onToggleMobileSidebar={() => setIsMobileSidebarOpen(!isMobileSidebarOpen)}
           isSidebarCollapsed={isSidebarCollapsed}
           onToggleSidebarCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
           onOpenGlobalSearch={() => setIsGlobalSearchOpen(true)}
         />
 
-        {/* Page content - pb-20 lg:pb-0 prevents content from being hidden behind iOS-style bottom bar */}
-        <main className="flex-1 min-w-0 w-full flex flex-col pb-20 lg:pb-0">
+        {/* Mobile header (< lg): judul halaman, kembali, pencarian, notifikasi, profil */}
+        <MobileAppHeader
+          onOpenGlobalSearch={() => setIsGlobalSearchOpen(true)}
+        />
+
+        {/* Page content - pb prevents content from being hidden behind bottom bar.
+             On notched iPhones: safe-area-inset-bottom ≈ 34px + 50px bar = ~84px needed.
+             pb-[max(5rem,calc(3.5rem+env(safe-area-inset-bottom)))] covers all devices. */}
+        <main className="flex-1 min-w-0 w-full flex flex-col pb-[max(5rem,calc(3.5rem+env(safe-area-inset-bottom)))] lg:pb-0">
           <Outlet />
         </main>
       </div>
 
-      {/* iOS-Style Bottom Navigation Tab Bar (Mobile only: lg:hidden) */}
-      <MobileBottomNav
-        onOpenGlobalSearch={() => setIsGlobalSearchOpen(true)}
-        onToggleMobileSidebar={() => setIsMobileSidebarOpen(prev => !prev)}
-      />
+      {/* Mobile Bottom Navigation Tab Bar (lg:hidden) */}
+      <MobileBottomNav />
 
       {/* Global search */}
       <GlobalSearchModal

@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Breadcrumb } from '@/components/layout/Breadcrumb'
 import { PageContainer } from '@/components/layout/PageContainer'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -11,10 +10,10 @@ import { useAuth } from '@/context/AuthContext'
 import { dataService } from '@/lib/dataService'
 import type { PermissionAction, PermissionResource, RoleEntity } from '@/types/database'
 import {
-  HeroShieldCheck,
   HeroChevronDown,
   HeroMagnifyingGlass,
   HeroCheck,
+  HeroArrowLeft,
 } from '@/components/icons/HeroIcons'
 
 interface ShieldActionItem {
@@ -287,33 +286,21 @@ export const RoleEditPage: React.FC = () => {
   return (
     <PageContainer variant="full">
       <form noValidate onSubmit={handleSave} className="space-y-4">
-        {/* Header (Minimal & Compact) */}
-        <div className="flex flex-col gap-1">
-          <Breadcrumb
-            items={[
-              { label: 'Superadmin', href: '/organizations' },
-              { label: 'Peran & Izin', href: '/roles' },
-              { label: `Edit Peran: ${role?.name || ''}` },
-            ]}
-          />
-          <div className="flex items-center gap-2.5 mt-0.5">
-            <div className="p-1.5 rounded-lg bg-amber-500/10 text-amber-500 border border-amber-500/20 shrink-0">
-              <HeroShieldCheck className="w-5 h-5" />
-            </div>
-            <div>
-              <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-fg flex items-center gap-2">
-                Edit Peran: {role?.name}
-                {role?.is_system && (
-                  <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
-                    Sistem Bawaan
-                  </span>
-                )}
-              </h1>
-              <p className="text-xs text-fg-muted mt-0.5">
-                Atur izin per sumber daya, halaman, dan widget.
-              </p>
-            </div>
-          </div>
+        {/* Header */}
+        <div className="flex items-center gap-3 pb-2 border-b border-line">
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={() => navigate('/roles')}
+            className="hidden sm:inline-flex shrink-0 text-xs"
+          >
+            <HeroArrowLeft className="w-3.5 h-3.5 mr-1" />
+            Kembali
+          </Button>
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-fg">
+            Ubah Peran: {role?.name}
+          </h1>
         </div>
 
         {/* SECTION 1: METADATA PERAN (MINIMAL 1-ROW CARD) */}

@@ -13,11 +13,16 @@ import {
   HeroChartBar,
   HeroPlus,
   HeroEye,
+  HeroTrash,
 } from '@/components/icons/HeroIcons'
+import {
+  OrganizationScopeBadge,
+  OrganizationScopeSwitcher,
+} from '@/components/organization'
 
 export const PerformanceListPage: React.FC = () => {
   const navigate = useNavigate()
-  const { user, currentOrganization } = useAuth()
+  const { user, currentOrganization, currentScopeMode } = useAuth()
   const { success, error } = useToast()
   const { confirm } = useConfirm()
 
@@ -30,7 +35,11 @@ export const PerformanceListPage: React.FC = () => {
     if (!orgId) return
     setIsLoading(true)
     try {
-      const perfs = await dataService.getPerformances(orgId, undefined, user)
+      const perfs = await dataService.getPerformances(
+        { organizationId: orgId, mode: currentScopeMode },
+        undefined,
+        user
+      )
       setPerformances(perfs)
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Gagal memuat kinerja'
@@ -38,7 +47,7 @@ export const PerformanceListPage: React.FC = () => {
     } finally {
       setIsLoading(false)
     }
-  }, [orgId, user, error])
+  }, [orgId, currentScopeMode, user, error])
 
   useEffect(() => {
     loadData()
@@ -155,20 +164,25 @@ export const PerformanceListPage: React.FC = () => {
         <div>
           <Breadcrumb
             items={[
-              { label: 'Organisasi', href: '/programs' },
               { label: 'Capaian Kinerja' },
             ]}
           />
-          <h1 className="text-2xl font-bold tracking-tight text-fg mt-1 flex items-center gap-2.5">
-            <HeroChartBar className="w-7 h-7 text-amber-500" />
-            Capaian Kinerja (KPI) & Bukti Fisik
-          </h1>
+          <div className="flex items-center gap-2.5 flex-wrap mt-1">
+            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-fg flex items-center gap-2.5">
+              <HeroChartBar className="w-7 h-7 text-amber-500" />
+              Capaian Kinerja (KPI) & Bukti Fisik
+            </h1>
+            <OrganizationScopeBadge />
+          </div>
         </div>
 
-        <Button variant="primary" onClick={() => navigate('/performance/create')} className="shrink-0 self-start sm:self-auto">
-          <HeroPlus className="w-4 h-4 mr-2" />
-          Tambah Indikator KPI
-        </Button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <OrganizationScopeSwitcher size="sm" />
+          <Button variant="primary" onClick={() => navigate('/performance/create')} className="shrink-0 self-start sm:self-auto">
+            <HeroPlus className="w-4 h-4 mr-2" />
+            Tambah Indikator KPI
+          </Button>
+        </div>
       </div>
 
       {/* Overview Stat Cards */}
@@ -201,6 +215,89 @@ export const PerformanceListPage: React.FC = () => {
         searchPlaceholder="Cari indikator kinerja..."
         searchKey="kpi_name"
         onDelete={handleDelete}
+        renderCard={(p) => {
+          const pct = p.percentage ?? (p.target && p.target > 0 ? Math.round(((p.realized || 0) / p.target) * 100) : 0)
+          let colorClass = 'bg-amber-500'
+          if (pct >= 80) colorClass = 'bg-emerald-500'
+          else if (pct < 50) colorClass = 'bg-red-500'
+
+          return (
+            <div className="p-4 rounded-xl bg-surface border border-line shadow-xs space-y-3">
+              {/* Header: Indikator & Program */}
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <h3 className="font-semibold text-fg text-sm">{p.kpi_name}</h3>
+                  <p className="text-xs text-amber-600 dark:text-amber-400 font-medium mt-0.5">
+                    {p.program?.title || 'Program Umum'}
+                  </p>
+                  {p.notes && (
+                    <p className="text-xs text-fg-muted mt-1">{p.notes}</p>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleDelete(p)}
+                  className="w-11 h-11 flex items-center justify-center text-fg-muted hover:text-red-500 rounded-lg hover:bg-hover-bg shrink-0 -mr-2 -mt-2 cursor-pointer transition-colors"
+                  title="Hapus Indikator"
+                >
+                  <HeroTrash className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Realisasi vs Target (Side by side comparison columns) */}
+              <div className="grid grid-cols-2 gap-2 p-2.5 rounded-lg bg-surface-muted/60 border border-line">
+                <div className="text-center">
+                  <p className="text-[11px] font-medium text-fg-muted uppercase tracking-wider">Realisasi</p>
+                  <p className="text-base font-bold text-fg mt-0.5">
+                    {p.realized || 0} <span className="text-xs font-normal text-fg-muted">{p.unit}</span>
+                  </p>
+                </div>
+                <div className="text-center border-l border-line">
+                  <p className="text-[11px] font-medium text-fg-muted uppercase tracking-wider">Target</p>
+                  <p className="text-base font-bold text-fg mt-0.5">
+                    {p.target || 0} <span className="text-xs font-normal text-fg-muted">{p.unit}</span>
+                  </p>
+                </div>
+              </div>
+
+              {/* Progress Bar (Full Width & Responsive) */}
+              <div className="space-y-1">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-bold text-fg">{pct}%</span>
+                  <span className="text-fg-muted">
+                    {pct >= 100 ? 'Tuntas' : pct >= 80 ? 'Optimal' : 'Perlu Dorongan'}
+                  </span>
+                </div>
+                <div className="w-full h-2.5 rounded-full bg-surface-muted overflow-hidden">
+                  <div
+                    className={`h-full ${colorClass} rounded-full transition-all duration-500`}
+                    style={{ width: `${Math.min(100, pct)}%` }}
+                  />
+                </div>
+              </div>
+
+              {/* Periode & Bukti Fisik */}
+              <div className="flex items-center justify-between pt-1 text-xs">
+                <span className="text-fg-muted">Periode: <strong className="text-fg">{p.period}</strong></span>
+                {p.evidence_urls && p.evidence_urls.length > 0 ? (
+                  <a
+                    href={p.evidence_urls[0]}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1.5 min-h-[44px] px-3 py-2 text-xs font-semibold text-amber-600 dark:text-amber-400 hover:text-amber-700 bg-amber-500/10 rounded-lg cursor-pointer"
+                  >
+                    <HeroEye className="w-4 h-4" />
+                    Lihat Bukti ({p.evidence_urls.length})
+                  </a>
+                ) : (
+                  <span className="text-xs text-fg-muted italic min-h-[44px] flex items-center">
+                    Belum ada bukti
+                  </span>
+                )}
+              </div>
+            </div>
+          )
+        }}
       />
     </PageContainer>
   )

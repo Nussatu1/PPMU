@@ -1,8 +1,57 @@
 import React from 'react'
 
+export type IconSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl' | number
+
 export interface IconProps extends React.SVGProps<SVGSVGElement> {
   className?: string
-  size?: number
+  size?: IconSize
+}
+
+/**
+ * Standard icon size token mapping (default: 'sm' = 20px / w-5 h-5):
+ * - xs: 16px (inline badge, status indicator, tiny caption)
+ * - sm: 20px (default for buttons, form inputs, list items)
+ * - md: 24px (app bar, bottom navigation, primary actions)
+ * - lg: 32px (card headers, small empty states)
+ * - xl: 48px (hero empty states, onboarding illustrations)
+ */
+export const iconSizeClasses: Record<'xs' | 'sm' | 'md' | 'lg' | 'xl', string> = {
+  xs: 'w-4 h-4',
+  sm: 'w-5 h-5',
+  md: 'w-6 h-6',
+  lg: 'w-8 h-8',
+  xl: 'w-12 h-12',
+}
+
+export function getIconSizeClass(size?: IconSize, defaultSize: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'sm'): string {
+  if (!size) return iconSizeClasses[defaultSize]
+  if (typeof size === 'number') {
+    if (size <= 16) return iconSizeClasses.xs
+    if (size <= 20) return iconSizeClasses.sm
+    if (size <= 24) return iconSizeClasses.md
+    if (size <= 36) return iconSizeClasses.lg
+    return iconSizeClasses.xl
+  }
+  return iconSizeClasses[size] ?? iconSizeClasses[defaultSize]
+}
+
+export interface GenericIconProps extends IconProps {
+  icon: React.ComponentType<IconProps>
+}
+
+/**
+ * Single Unified Icon component with strict standardized token sizing.
+ * Default size is 'sm' (20px) per guidelines.
+ */
+export const Icon: React.FC<GenericIconProps> = ({
+  icon: IconComponent,
+  size = 'sm',
+  className,
+  ...props
+}) => {
+  const sizeCls = getIconSizeClass(size, 'sm')
+  const combinedCls = className ? sizeCls + ' ' + className : sizeCls
+  return <IconComponent className={combinedCls} {...props} />
 }
 
 // Heroicon Outline 24x24 Icons matching official Filament v3
@@ -528,7 +577,10 @@ export const HeroCog6Tooth: React.FC<IconProps> = ({ className = 'w-5 h-5', ...p
 )
 
 
-
-
+export const HeroUserGroup: React.FC<IconProps> = ({ className = 'w-5 h-5', ...props }) => (
+  <svg fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className} {...props}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M18 18.72a9.094 9.094 0 0 0 3.741-.479 3 3 0 0 0-4.682-2.72m.94 3.198.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0 1 12 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 0 1 6 18.719m12 0a5.971 5.971 0 0 0-.941-3.197m0 0A5.995 5.995 0 0 0 12 12.75a5.995 5.995 0 0 0-5.058 2.772m0 0a3 3 0 0 0-4.681 2.72 8.986 8.986 0 0 0 3.74.477m.94-3.197a5.971 5.971 0 0 0-.94 3.197M15 6.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm6 3a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Zm-13.5 0a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Z" />
+  </svg>
+)
 
 

@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useCallback } from 'react'
-import { Breadcrumb } from '@/components/layout/Breadcrumb'
 import { PageContainer } from '@/components/layout/PageContainer'
 import { DataTable, type ColumnDef } from '@/components/ui/Table'
 import { Badge } from '@/components/ui/Badge'
@@ -14,6 +13,7 @@ import {
   HeroEye,
   HeroTrash,
   HeroExclamationTriangle,
+  HeroArrowRight,
 } from '@/components/icons/HeroIcons'
 
 export const AuditLogListPage: React.FC = () => {
@@ -118,8 +118,8 @@ export const AuditLogListPage: React.FC = () => {
       sortable: true,
       render: (log) => (
         <div>
-          <p className="font-semibold text-xs text-fg">{log.user_name}</p>
-          <p className="text-[10px] text-fg-muted font-mono">{log.ip_address || '127.0.0.1'}</p>
+          <p className="font-semibold text-sm text-fg">{log.user_name}</p>
+          <p className="text-xs text-fg-muted font-mono">{log.ip_address || '127.0.0.1'}</p>
         </div>
       ),
     },
@@ -139,8 +139,8 @@ export const AuditLogListPage: React.FC = () => {
       sortable: true,
       render: (log) => (
         <div>
-          <span className="font-semibold text-xs text-fg">{log.resource}</span>
-          <p className="text-[10px] text-fg-muted font-mono truncate max-w-[120px]">
+          <span className="font-semibold text-sm text-fg">{log.resource}</span>
+          <p className="text-xs text-fg-muted font-mono truncate max-w-[120px]">
             ID: {log.resource_id.slice(0, 8)}...
           </p>
         </div>
@@ -154,7 +154,7 @@ export const AuditLogListPage: React.FC = () => {
           size="xs"
           variant="secondary"
           onClick={() => setSelectedLog(log)}
-          icon={<HeroEye className="w-3.5 h-3.5 text-amber-500" />}
+          icon={<HeroEye className="w-4 h-4 text-amber-500" />}
         >
           Lihat Diff
         </Button>
@@ -166,21 +166,10 @@ export const AuditLogListPage: React.FC = () => {
     <PageContainer variant="full">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <Breadcrumb
-            items={[
-              { label: 'Superadmin', href: '/organizations' },
-              { label: 'Audit Trail' },
-            ]}
-          />
-          <h1 className="text-2xl font-bold tracking-tight text-fg mt-1 flex items-center gap-2.5">
-            <HeroClock className="w-6 h-6 text-amber-500" />
-            Jejak Audit & Keamanan Sistem
-          </h1>
-          <p className="text-xs text-fg-muted mt-0.5">
-            Rekam jejak mutasi data, otorisasi akses, dan aktivitas keamanan sistem.
-          </p>
-        </div>
+        <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-fg flex items-center gap-2.5">
+          <HeroClock className="w-6 h-6 text-amber-500" />
+          Jejak Audit
+        </h1>
 
         {logs.length > 0 && (
           <Button
@@ -189,7 +178,7 @@ export const AuditLogListPage: React.FC = () => {
             onClick={() => setShowClearModal(true)}
             icon={<HeroTrash className="w-4 h-4" />}
           >
-            Bersihkan Semua Log
+            Bersihkan Log
           </Button>
         )}
       </div>
@@ -203,6 +192,58 @@ export const AuditLogListPage: React.FC = () => {
         searchKey="user_name"
         onDelete={handleDeleteSingle}
         onBulkDelete={handleBulkDelete}
+        renderCard={(log) => (
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={() => setSelectedLog(log)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                setSelectedLog(log)
+              }
+            }}
+            className="p-4 rounded-xl bg-surface border border-line shadow-xs hover:border-amber-500/50 transition-colors cursor-pointer active:scale-[0.99] space-y-2.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+          >
+            {/* Baris 1: Action Badge & Jam/Waktu */}
+            <div className="flex items-center justify-between">
+              <Badge variant={actionVariant(log.action)} dot>
+                {log.action.toUpperCase()}
+              </Badge>
+              <span className="text-xs font-mono text-fg-muted">
+                {new Date(log.created_at).toLocaleTimeString('id-ID', {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })}{' '}
+                •{' '}
+                {new Date(log.created_at).toLocaleDateString('id-ID', {
+                  day: 'numeric',
+                  month: 'short',
+                })}
+              </span>
+            </div>
+
+            {/* Baris 2: Modul & Pelaku */}
+            <div>
+              <p className="font-semibold text-fg text-sm">{log.resource}</p>
+              <p className="text-xs text-fg-muted mt-0.5">
+                Oleh: <strong className="text-fg font-medium">{log.user_name}</strong>
+              </p>
+            </div>
+
+            {/* Baris 3: IP & Resource ID */}
+            <div className="flex items-center justify-between text-[11px] font-mono text-fg-muted pt-1 border-t border-line-divider">
+              <span>IP: {log.ip_address || '127.0.0.1'}</span>
+              <span>ID: #{log.resource_id.slice(0, 8)}</span>
+            </div>
+
+            {/* Baris 4: Call to Action */}
+            <div className="flex items-center justify-between pt-1 text-xs text-amber-600 dark:text-amber-400 font-medium">
+              <span>Ketuk untuk melihat diff</span>
+              <HeroArrowRight className="w-3.5 h-3.5" />
+            </div>
+          </div>
+        )}
       />
 
       {/* JSON Payload Detail Modal */}
@@ -267,7 +308,7 @@ export const AuditLogListPage: React.FC = () => {
               <p className="font-sans font-semibold text-fg mb-1 text-xs">
                 User Agent Klien:
               </p>
-              <p className="p-2.5 rounded-lg bg-surface-muted border border-line text-fg-muted text-[11px]">
+              <p className="p-2.5 rounded-lg bg-surface-muted border border-line text-fg-muted text-xs">
                 {selectedLog.user_agent || '-'}
               </p>
             </div>

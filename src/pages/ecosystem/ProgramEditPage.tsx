@@ -13,7 +13,9 @@ import { NumberInput } from '@/components/ui/NumberInput'
 import { useToast } from '@/context/ToastContext'
 import { useAuth } from '@/context/AuthContext'
 import { dataService } from '@/lib/dataService'
+import { UnitAssignmentSelector } from '@/components/organization/UnitAssignmentSelector'
 import type { Program, Section as OrgSection, Personnel } from '@/types/database'
+
 import {
   HeroBriefcase,
   HeroArrowLeft,
@@ -21,7 +23,9 @@ import {
   HeroCurrencyDollar,
   HeroCalendar,
   HeroDocumentText,
+  HeroUserGroup,
 } from '@/components/icons/HeroIcons'
+
 
 export const ProgramEditPage: React.FC = () => {
   const { id } = useParams<{ id: string }>()
@@ -44,7 +48,9 @@ export const ProgramEditPage: React.FC = () => {
     target_kpi: '',
     start_date: '',
     end_date: '',
+    assigned_to_organization_id: null as string | null,
   })
+
 
   const orgId = currentOrganization?.id || ''
   const set = (f: keyof typeof formData, v: string | number) =>
@@ -78,7 +84,9 @@ export const ProgramEditPage: React.FC = () => {
         target_kpi: found.target_kpi || '',
         start_date: found.start_date || '',
         end_date: found.end_date || '',
+        assigned_to_organization_id: found.assigned_to_organization_id || null,
       })
+
     } catch (err: unknown) {
       error('Kesalahan', err instanceof Error ? err.message : 'Gagal memuat program')
     } finally {
@@ -133,7 +141,7 @@ export const ProgramEditPage: React.FC = () => {
               { label: program?.title || 'Edit Program' },
             ]}
           />
-          <h1 className="text-2xl font-bold tracking-tight text-fg">
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-fg">
             {program?.title || 'Edit Program Kerja'}
           </h1>
           <p className="text-sm text-fg-muted">
@@ -144,7 +152,7 @@ export const ProgramEditPage: React.FC = () => {
           variant="secondary"
           icon={<HeroArrowLeft className="w-4 h-4" />}
           onClick={() => navigate('/programs')}
-          className="shrink-0 self-start sm:self-auto"
+          className="hidden sm:inline-flex shrink-0 self-start sm:self-auto"
         >
           Kembali
         </Button>
@@ -276,6 +284,21 @@ export const ProgramEditPage: React.FC = () => {
                 value={formData.description}
                 onChange={(e) => set('description', e.target.value)}
                 placeholder="Jelaskan tujuan strategis, output yang diharapkan, dan mekanisme pelaksanaan..."
+              />
+            </Section>
+
+            {/* Penugasan Unit (Stage 6) */}
+            <Section
+              title="Penugasan Unit"
+              description="Delegasikan program ini ke unit organisasi turunan yang bertanggung jawab atas pelaksanaannya."
+              icon={<HeroUserGroup className="w-5 h-5" />}
+              columns={1}
+              className="col-span-full"
+            >
+              <UnitAssignmentSelector
+                value={formData.assigned_to_organization_id}
+                onChange={(orgId) => set('assigned_to_organization_id', orgId as unknown as string)}
+                helperText="Hanya unit turunan yang sah yang dapat dipilih. Biarkan kosong untuk menghapus penugasan."
               />
             </Section>
           </SectionGrid>

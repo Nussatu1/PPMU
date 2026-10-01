@@ -1,7 +1,8 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react'
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react'
 import type {
   User,
   Organization,
+  OrganizationScopeMode,
   PermissionAction,
   PermissionResource,
 } from '@/types/database'
@@ -9,11 +10,22 @@ import { supabase, isSupabaseConfigured } from '@/lib/supabase'
 import { dataService } from '@/lib/dataService'
 import { initialUsers } from '@/lib/mockData'
 import { hasPermission, enforceScope } from '@/lib/authorization'
+import {
+  getAncestorOrganizationIds,
+  getChildrenOrganizations,
+  getDescendantOrganizationIds,
+} from '@/lib/hierarchyService'
 
 interface AuthContextType {
   user: User | null
   currentOrganization: Organization | null
   userOrganizations: Organization[]
+  organizationAncestors: Organization[]
+  organizationChildren: Organization[]
+  organizationDescendants: Organization[]
+  currentScopeMode: OrganizationScopeMode
+  canAccessDescendants: boolean
+  setScopeMode: (mode: OrganizationScopeMode) => void
   isAuthenticated: boolean
   isLoading: boolean
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>
@@ -21,7 +33,12 @@ interface AuthContextType {
   switchOrganization: (organizationId: string) => void
   refreshOrganizations: () => Promise<void>
   switchPersona: (userId: string) => Promise<void>
-  can: (resource: PermissionResource, action: PermissionAction, targetOrgId?: string) => boolean
+  can: (
+    resource: PermissionResource,
+    action: PermissionAction,
+    targetOrgId?: string,
+    mode?: OrganizationScopeMode
+  ) => boolean
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -44,21 +61,72 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (stored) {
         const parsed: User = JSON.parse(stored)
         const matched = initialUsers.find((iu) => iu.id === parsed.id || iu.email?.toLowerCase() === parsed.email?.toLowerCase())
-        return {
+        const resolved: User = {
           ...parsed,
           avatar_url: parsed.avatar_url || matched?.avatar_url || DEFAULT_SUPERADMIN.avatar_url,
           name: parsed.name || matched?.name || DEFAULT_SUPERADMIN.name,
         }
+        dataService.setActiveAccount(resolved)
+        return resolved
       }
+      const wasLoggedOut = localStorage.getItem('filament_bakid_logged_out')
+      if (wasLoggedOut) {
+        dataService.setActiveAccount(null)
+        return null
+      }
+      dataService.setActiveAccount(DEFAULT_SUPERADMIN)
       return DEFAULT_SUPERADMIN
     } catch {
+      dataService.setActiveAccount(DEFAULT_SUPERADMIN)
       return DEFAULT_SUPERADMIN
     }
   })
 
   const [currentOrganization, setCurrentOrganization] = useState<Organization | null>(null)
   const [userOrganizations, setUserOrganizations] = useState<Organization[]>([])
+  const [currentScopeMode, setCurrentScopeMode] = useState<OrganizationScopeMode>('own')
   const [isLoading, setIsLoading] = useState(false)
+
+  // Hitung relasi pohon hierarki untuk organisasi aktif
+  const organizationAncestors = useMemo(() => {
+    if (!currentOrganization) return []
+    const ids = getAncestorOrganizationIds(currentOrganization.id, userOrganizations)
+    return userOrganizations.filter((o) => ids.includes(o.id))
+  }, [currentOrganization, userOrganizations])
+
+  const organizationChildren = useMemo(() => {
+    if (!currentOrganization) return []
+    return getChildrenOrganizations(currentOrganization.id, userOrganizations)
+  }, [currentOrganization, userOrganizations])
+
+  const organizationDescendants = useMemo(() => {
+    if (!currentOrganization) return []
+    const ids = getDescendantOrganizationIds(currentOrganization.id, userOrganizations)
+    return userOrganizations.filter((o) => ids.includes(o.id))
+  }, [currentOrganization, userOrganizations])
+
+  const canAccessDescendants = useMemo(() => {
+    if (!user || user.status !== 'active') return false
+    if (user.is_superadmin || user.role === 'superadmin') return true
+    if (organizationDescendants.length === 0) return false
+
+    const role = user.active_membership?.role
+    const roleId = role?.id?.toLowerCase() || ''
+    if (['superadmin', 'admin', 'pimpinan', 'ketua', 'direktur'].some((r) => roleId.includes(r))) {
+      return true
+    }
+
+    const permissions = role?.permissions || []
+    return (
+      permissions.includes('view:descendants') ||
+      permissions.includes('Organization.viewAny') ||
+      permissions.includes('all')
+    )
+  }, [user, organizationDescendants])
+
+  const setScopeMode = useCallback((mode: OrganizationScopeMode) => {
+    setCurrentScopeMode(mode)
+  }, [])
 
   // Load organizations for the current user and set active membership
   const loadUserOrganizations = useCallback(async (activeUser: User | null) => {
@@ -100,9 +168,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     if (user) {
+      localStorage.removeItem('filament_bakid_logged_out')
       localStorage.setItem('filament_bakid_auth_user', JSON.stringify(user))
+      dataService.setActiveAccount(user)
     } else {
       localStorage.removeItem('filament_bakid_auth_user')
+      dataService.setActiveAccount(null)
     }
     loadUserOrganizations(user)
   }, [user?.id, loadUserOrganizations])
@@ -165,6 +236,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const targetUser = await dataService.getUserById(userId)
       if (targetUser) {
+        localStorage.removeItem('filament_bakid_logged_out')
+        dataService.setActiveAccount(targetUser)
         setUser(targetUser)
       }
     } finally {
@@ -173,15 +246,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }
 
   const can = useCallback(
-    (resource: PermissionResource, action: PermissionAction, targetOrgId?: string): boolean => {
+    (
+      resource: PermissionResource,
+      action: PermissionAction,
+      targetOrgId?: string,
+      mode: OrganizationScopeMode = currentScopeMode
+    ): boolean => {
       if (!user) return false
       if (user.is_superadmin || user.role === 'superadmin') return true
 
       const orgId = targetOrgId || currentOrganization?.id
-      if (!enforceScope(user, orgId)) return false
+      if (!enforceScope(user, orgId, mode, userOrganizations)) return false
       return hasPermission(user, resource, action)
     },
-    [user, currentOrganization]
+    [user, currentOrganization, currentScopeMode, userOrganizations]
   )
 
   const login = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
@@ -204,6 +282,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             status: 'active',
             created_at: new Date().toISOString(),
           }
+          localStorage.removeItem('filament_bakid_logged_out')
+          dataService.setActiveAccount(loggedUser)
           setUser(loggedUser)
           setIsLoading(false)
           return { success: true }
@@ -232,6 +312,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             error: 'Akun Anda telah dinonaktifkan. Silakan hubungi Superadmin.',
           }
         }
+        localStorage.removeItem('filament_bakid_logged_out')
+        dataService.setActiveAccount(matched)
         setUser(matched)
         setIsLoading(false)
         return { success: true }
@@ -253,6 +335,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (isSupabaseConfigured && supabase) {
       await supabase.auth.signOut()
     }
+    localStorage.setItem('filament_bakid_logged_out', 'true')
+    localStorage.removeItem('filament_bakid_auth_user')
+    localStorage.removeItem('filament_bakid_active_org_id')
+    dataService.setActiveAccount(null)
     setUser(null)
     setCurrentOrganization(null)
   }
@@ -263,6 +349,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         user,
         currentOrganization,
         userOrganizations,
+        organizationAncestors,
+        organizationChildren,
+        organizationDescendants,
+        currentScopeMode,
+        canAccessDescendants,
+        setScopeMode,
         isAuthenticated: !!user,
         isLoading,
         login,

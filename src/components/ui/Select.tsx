@@ -402,7 +402,7 @@ export const Select = React.forwardRef<HTMLDivElement, SelectProps>(
         {label && (
           <label
             htmlFor={selectId}
-            className="block text-xs font-semibold text-fg"
+            className="block text-sm font-semibold text-fg"
           >
             {label}
             {required && <span className="text-red-600 dark:text-red-400 ml-0.5 font-bold">*</span>}
@@ -423,7 +423,7 @@ export const Select = React.forwardRef<HTMLDivElement, SelectProps>(
             onClick={toggleOpen}
             onKeyDown={handleKeyDown}
             className={cn(
-              'w-full flex items-center justify-between rounded-lg bg-input-bg px-3 py-1.5 text-base sm:text-sm sm:leading-6 text-left transition duration-75 select-none min-h-[2.375rem] cursor-pointer shadow-sm ring-1',
+              'w-full flex items-center justify-between rounded-lg bg-input-bg px-3 py-1.5 text-base sm:text-sm sm:leading-6 text-left transition duration-75 select-none min-h-[44px] sm:min-h-[2.375rem] cursor-pointer shadow-sm ring-1',
               'text-fg',
               error
                 ? 'ring-red-600 dark:ring-red-500 focus:outline-none focus:ring-2 focus:ring-red-600 dark:focus:ring-red-500'
@@ -458,13 +458,13 @@ export const Select = React.forwardRef<HTMLDivElement, SelectProps>(
                   {selectedOptions[0].label}
                 </span>
               ) : (
-                <span className="truncate text-fg-subtle">
+                <span className="truncate text-fg-muted">
                   {placeholder}
                 </span>
               )}
             </div>
 
-            <div className="flex items-center gap-1 shrink-0 text-fg-subtle">
+            <div className="flex items-center gap-1 shrink-0 text-fg-muted">
               {clearable && hasValue && !disabled && (
                 <span
                   role="button"
@@ -475,7 +475,7 @@ export const Select = React.forwardRef<HTMLDivElement, SelectProps>(
                   <HeroXMark className="w-3.5 h-3.5" />
                 </span>
               )}
-              <HeroChevronUpDown className="w-5 h-5 text-fg-subtle" />
+              <HeroChevronUpDown className="w-5 h-5 text-fg-muted" />
             </div>
           </button>
         </div>
@@ -501,7 +501,7 @@ export const Select = React.forwardRef<HTMLDivElement, SelectProps>(
               {shouldShowSearch && (
                 <div className="p-1.5 border-b border-line-divider mb-1 shrink-0">
                   <div className="relative flex items-center">
-                    <HeroMagnifyingGlass className="w-3.5 h-3.5 absolute left-2 text-fg-subtle pointer-events-none" />
+                    <HeroMagnifyingGlass className="w-3.5 h-3.5 absolute left-2 text-fg-muted pointer-events-none" />
                     <input
                       ref={searchInputRef}
                       type="text"
@@ -512,7 +512,7 @@ export const Select = React.forwardRef<HTMLDivElement, SelectProps>(
                       }}
                       onKeyDown={handleSearchKeyDown}
                       placeholder="Cari..."
-                      className="w-full pl-7 pr-2 py-1 text-xs rounded-md bg-input-bg text-fg ring-1 ring-line-strong focus:outline-none focus:ring-1 focus:ring-primary-500"
+                      className="w-full pl-7 pr-2 py-1 text-base sm:text-xs rounded-md bg-input-bg text-fg ring-1 ring-line-strong focus:outline-none focus:ring-1 focus:ring-primary-500"
                     />
                   </div>
                 </div>

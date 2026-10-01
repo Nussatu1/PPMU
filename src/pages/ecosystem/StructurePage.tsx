@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import { Breadcrumb } from '@/components/layout/Breadcrumb'
 import { PageContainer } from '@/components/layout/PageContainer'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
@@ -362,56 +361,45 @@ export const StructurePage: React.FC = () => {
       {/* Page Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
-          <Breadcrumb
-            items={[
-              { label: 'Organisasi', href: '/structures' },
-              { label: 'Struktur & Seksi' },
-            ]}
-          />
-          <h1 className="text-2xl font-bold tracking-tight text-fg mt-1 flex items-center gap-2.5">
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-fg flex items-center gap-2.5">
             <HeroSquares2X2 className="w-7 h-7 text-amber-500" />
-            Struktur Organisasi, Seksi & Tupoksi
+            Struktur Organisasi
           </h1>
-          <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-            <span className="text-xs px-2.5 py-1 rounded-md bg-amber-500/10 text-amber-600 dark:text-amber-400 font-medium border border-amber-500/20 flex items-center gap-1.5">
+          <div className="flex items-center gap-2 mt-1 flex-wrap">
+            <span className="text-xs px-2.5 py-0.5 rounded-md bg-amber-500/10 text-amber-600 dark:text-amber-400 font-medium border border-amber-500/20 flex items-center gap-1.5">
               <HeroCalendar className="w-3.5 h-3.5" />
-              {periods.find((p) => p.id === selectedPeriodId)?.name || 'Periode Kepengurusan Aktif'}
+              {periods.find((p) => p.id === selectedPeriodId)?.name || 'Periode Aktif'}
             </span>
-            {periods.length > 1 && (
-              <span className="text-xs text-fg-muted">
-                • {periods.length} Periode Kepengurusan Tersimpan
-              </span>
-            )}
           </div>
         </div>
 
         {/* Action Controls & View Switcher */}
-        <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
           {/* Segmented View Switcher */}
-          <div className="p-1 rounded-xl bg-surface-muted border border-line flex items-center gap-1">
+          <div className="p-0.5 rounded-lg bg-surface-muted border border-line flex items-center gap-0.5">
             <button
               type="button"
               onClick={() => setViewMode('tree')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
+              className={`px-2.5 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
                 viewMode === 'tree'
-                  ? 'bg-surface text-fg shadow-2xs border border-line'
+                  ? 'bg-surface text-fg shadow-2xs border border-line/60'
                   : 'text-fg-muted hover:text-fg'
               }`}
             >
               <HeroArrowsRightLeft className="w-3.5 h-3.5 text-amber-500" />
-              Bagan Interaktif
+              Bagan
             </button>
             <button
               type="button"
               onClick={() => setViewMode('cards')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
+              className={`px-2.5 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
                 viewMode === 'cards'
-                  ? 'bg-surface text-fg shadow-2xs border border-line'
+                  ? 'bg-surface text-fg shadow-2xs border border-line/60'
                   : 'text-fg-muted hover:text-fg'
               }`}
             >
               <HeroUsers className="w-3.5 h-3.5 text-blue-500" />
-              Daftar Seksi
+              Seksi
             </button>
           </div>
 
@@ -419,10 +407,9 @@ export const StructurePage: React.FC = () => {
             variant="secondary"
             onClick={() => setIsExportModalOpen(true)}
             className="shrink-0"
-            title="Ekspor Bagan ke PDF, PNG, JPG, atau ZIP"
           >
             <HeroArrowDownTray className="w-4 h-4 mr-1.5 text-amber-500" />
-            Ekspor Bagan
+            Ekspor
           </Button>
 
           <Button variant="secondary" onClick={openCreateSection} className="shrink-0">

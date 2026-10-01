@@ -40,44 +40,54 @@ export const ChartWidget: React.FC = () => {
   const tooltipValue = 'text-fg'
 
   return (
-    <Card className="p-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+    <Card padding={false} className="p-3 sm:p-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-4 mb-2 sm:mb-6">
         <div>
-          <h3 className="text-base font-bold tracking-tight text-fg">
+          <h3 className="text-sm sm:text-base font-bold tracking-tight text-fg">
             {t.dashboard.chart.title}
           </h3>
-          <p className="text-xs text-fg-muted mt-0.5">
+          <p className="hidden sm:block text-xs text-fg-muted mt-0.5">
             {t.dashboard.chart.subtitle}
           </p>
         </div>
 
-        <div className="flex items-center gap-1 bg-surface-muted p-1 rounded-lg border border-line">
+        <div
+          role="tablist"
+          aria-label="Metrik Grafik"
+          className="inline-flex items-center p-0.5 rounded-lg bg-surface-muted border border-line/60 shrink-0 self-start sm:self-auto"
+        >
           <button
             type="button"
+            role="tab"
+            aria-selected={metric === 'budget'}
             onClick={() => setMetric('budget')}
-            className={`px-3 py-1 text-xs font-semibold rounded-md transition-all cursor-pointer ${
+            className={`px-2.5 py-1 text-[11px] sm:text-xs font-medium rounded-md transition-all cursor-pointer select-none focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-amber-500/70 ${
               metric === 'budget'
-                ? 'bg-surface text-amber-600 dark:text-amber-400 shadow-xs border border-line'
+                ? 'bg-surface text-amber-600 dark:text-amber-400 font-semibold shadow-2xs border border-line/50'
                 : 'text-fg-muted hover:text-fg'
             }`}
           >
-            {t.dashboard.chart.budget}
+            <span className="sm:hidden">Anggaran</span>
+            <span className="hidden sm:inline">{t.dashboard.chart.budget}</span>
           </button>
           <button
             type="button"
+            role="tab"
+            aria-selected={metric === 'activities'}
             onClick={() => setMetric('activities')}
-            className={`px-3 py-1 text-xs font-semibold rounded-md transition-all cursor-pointer ${
+            className={`px-2.5 py-1 text-[11px] sm:text-xs font-medium rounded-md transition-all cursor-pointer select-none focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-amber-500/70 ${
               metric === 'activities'
-                ? 'bg-surface text-amber-600 dark:text-amber-400 shadow-xs border border-line'
+                ? 'bg-surface text-amber-600 dark:text-amber-400 font-semibold shadow-2xs border border-line/50'
                 : 'text-fg-muted hover:text-fg'
             }`}
           >
-            {t.dashboard.chart.activities}
+            <span className="sm:hidden">Kegiatan</span>
+            <span className="hidden sm:inline">{t.dashboard.chart.activities}</span>
           </button>
         </div>
       </div>
 
-      <div className="h-72 w-full">
+      <div className="h-36 sm:h-72 w-full">
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={monthlyData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
             <defs>

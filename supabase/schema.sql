@@ -317,6 +317,9 @@ ON CONFLICT (id) DO NOTHING;
 -- 11. Organizations Table
 CREATE TABLE IF NOT EXISTS organizations (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    parent_id UUID REFERENCES organizations(id) ON DELETE SET NULL,
+    unit_type VARCHAR(50) DEFAULT 'unit',
+    level INT DEFAULT 0,
     name VARCHAR(255) NOT NULL,
     code VARCHAR(100) UNIQUE NOT NULL,
     email VARCHAR(255) NOT NULL,
@@ -326,8 +329,13 @@ CREATE TABLE IF NOT EXISTS organizations (
     period_active VARCHAR(100) DEFAULT '2025 - 2029',
     status VARCHAR(50) DEFAULT 'active' CHECK (status IN ('active', 'inactive', 'archived')),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    CONSTRAINT chk_no_self_parent CHECK (parent_id IS NULL OR parent_id <> id)
 );
+
+CREATE INDEX IF NOT EXISTS idx_organizations_parent_id ON organizations(parent_id);
+CREATE INDEX IF NOT EXISTS idx_organizations_unit_type ON organizations(unit_type);
+
 
 -- 12. Roles Table
 CREATE TABLE IF NOT EXISTS roles (
@@ -579,15 +587,179 @@ ALTER TABLE tasks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
 ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Public Read/Write Organizations" ON organizations FOR ALL USING (true);
-CREATE POLICY "Public Read/Write Roles" ON roles FOR ALL USING (true);
-CREATE POLICY "Public Read/Write Memberships" ON organization_memberships FOR ALL USING (true);
-CREATE POLICY "Public Read/Write Programs" ON programs FOR ALL USING (true);
-CREATE POLICY "Public Read/Write Agendas" ON agendas FOR ALL USING (true);
-CREATE POLICY "Public Read/Write Performances" ON performances FOR ALL USING (true);
-CREATE POLICY "Public Read/Write Budgets" ON budgets FOR ALL USING (true);
-CREATE POLICY "Public Read/Write Transactions" ON transactions FOR ALL USING (true);
-CREATE POLICY "Public Read/Write Reports" ON reports FOR ALL USING (true);
-CREATE POLICY "Public Read/Write Tasks" ON tasks FOR ALL USING (true);
-CREATE POLICY "Public Read/Write Notifications" ON notifications FOR ALL USING (true);
-CREATE POLICY "Public Read/Write AuditLogs" ON audit_logs FOR ALL USING (true);
+-- ------------------------------------------------------------------------------
+-- RLS Helper Functions (SECURITY DEFINER)
+-- ------------------------------------------------------------------------------
+
+-- Check if current user is superadmin
+CREATE OR REPLACE FUNCTION is_superadmin()
+RETURNS BOOLEAN AS $$
+BEGIN
+    RETURN EXISTS (
+        SELECT 1 FROM users
+        WHERE id = auth.uid() AND (role = 'admin' OR role = 'superadmin')
+    ) OR EXISTS (
+        SELECT 1 FROM organization_memberships
+        WHERE user_id = auth.uid() AND role_id = 'superadmin' AND status = 'active'
+    );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER STABLE;
+
+-- Direct active memberships for the user
+CREATE OR REPLACE FUNCTION get_user_active_organization_ids()
+RETURNS TABLE (organization_id UUID) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT om.organization_id
+    FROM organization_memberships om
+    WHERE om.user_id = auth.uid()
+      AND om.status = 'active';
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER STABLE;
+
+-- User's accessible organization IDs:
+-- Direct active organizations + downward descendants if user has descendant viewing permission
+CREATE OR REPLACE FUNCTION get_user_accessible_organization_ids()
+RETURNS TABLE (organization_id UUID) AS $$
+BEGIN
+    IF is_superadmin() THEN
+        RETURN QUERY SELECT id FROM organizations;
+        RETURN;
+    END IF;
+
+    RETURN QUERY
+    WITH RECURSIVE org_tree AS (
+        -- Base: Direct active memberships
+        SELECT o.id, o.parent_id
+        FROM organizations o
+        INNER JOIN organization_memberships om ON om.organization_id = o.id
+        WHERE om.user_id = auth.uid()
+          AND om.status = 'active'
+          AND o.status = 'active'
+
+        UNION
+
+        -- Downward recursive traversal (parent -> children only, never upward to ancestors)
+        -- Only if user role on parent allows descendant reading
+        SELECT child.id, child.parent_id
+        FROM organizations child
+        INNER JOIN org_tree parent ON child.parent_id = parent.id
+        INNER JOIN organization_memberships om ON om.organization_id = parent.id
+        INNER JOIN roles r ON r.id = om.role_id
+        WHERE om.user_id = auth.uid()
+          AND om.status = 'active'
+          AND (
+              r.id IN ('superadmin', 'admin', 'pimpinan', 'ketua')
+              OR r.permissions::jsonb ? 'view:descendants'
+              OR r.permissions::jsonb ? 'organization.hierarchy.view'
+              OR r.permissions::jsonb ? 'all'
+          )
+    )
+    SELECT DISTINCT id FROM org_tree;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER STABLE;
+
+-- ------------------------------------------------------------------------------
+-- Scoped RLS Policies
+-- ------------------------------------------------------------------------------
+
+-- Organizations
+CREATE POLICY "Organizations Select Policy" ON organizations FOR SELECT
+USING (
+    is_superadmin()
+    OR id IN (SELECT organization_id FROM get_user_accessible_organization_ids())
+);
+
+CREATE POLICY "Organizations Modify Policy" ON organizations FOR ALL
+USING (
+    is_superadmin()
+    OR id IN (
+        SELECT om.organization_id FROM organization_memberships om
+        INNER JOIN roles r ON r.id = om.role_id
+        WHERE om.user_id = auth.uid() AND om.status = 'active'
+          AND (r.id IN ('superadmin', 'admin') OR r.permissions::jsonb ? 'manage:organization')
+    )
+);
+
+-- Roles (system dictionary / read-only for normal users)
+CREATE POLICY "Roles Select Policy" ON roles FOR SELECT USING (true);
+CREATE POLICY "Roles Admin Policy" ON roles FOR ALL USING (is_superadmin());
+
+-- Organization Memberships
+CREATE POLICY "Memberships Select Policy" ON organization_memberships FOR SELECT
+USING (
+    is_superadmin()
+    OR user_id = auth.uid()
+    OR organization_id IN (SELECT organization_id FROM get_user_accessible_organization_ids())
+);
+
+CREATE POLICY "Memberships Admin Policy" ON organization_memberships FOR ALL
+USING (
+    is_superadmin()
+    OR organization_id IN (
+        SELECT om.organization_id FROM organization_memberships om
+        WHERE om.user_id = auth.uid() AND om.status = 'active' AND om.role_id IN ('superadmin', 'admin')
+    )
+);
+
+-- Structures & Sections & Personnels
+CREATE POLICY "Structures Select Policy" ON structures FOR SELECT
+USING (is_superadmin() OR organization_id IN (SELECT organization_id FROM get_user_accessible_organization_ids()));
+CREATE POLICY "Structures Modify Policy" ON structures FOR ALL
+USING (is_superadmin() OR organization_id IN (SELECT organization_id FROM get_user_active_organization_ids()));
+
+CREATE POLICY "Sections Select Policy" ON sections FOR SELECT
+USING (is_superadmin() OR organization_id IN (SELECT organization_id FROM get_user_accessible_organization_ids()));
+CREATE POLICY "Sections Modify Policy" ON sections FOR ALL
+USING (is_superadmin() OR organization_id IN (SELECT organization_id FROM get_user_active_organization_ids()));
+
+CREATE POLICY "Personnels Select Policy" ON personnels FOR SELECT
+USING (is_superadmin() OR organization_id IN (SELECT organization_id FROM get_user_accessible_organization_ids()));
+CREATE POLICY "Personnels Modify Policy" ON personnels FOR ALL
+USING (is_superadmin() OR organization_id IN (SELECT organization_id FROM get_user_active_organization_ids()));
+
+-- Operational Modules (Programs, Agendas, Performances, Budgets, Transactions, Reports, Tasks)
+CREATE POLICY "Programs Select Policy" ON programs FOR SELECT
+USING (is_superadmin() OR organization_id IN (SELECT organization_id FROM get_user_accessible_organization_ids()));
+CREATE POLICY "Programs Modify Policy" ON programs FOR ALL
+USING (is_superadmin() OR organization_id IN (SELECT organization_id FROM get_user_active_organization_ids()));
+
+CREATE POLICY "Agendas Select Policy" ON agendas FOR SELECT
+USING (is_superadmin() OR organization_id IN (SELECT organization_id FROM get_user_accessible_organization_ids()));
+CREATE POLICY "Agendas Modify Policy" ON agendas FOR ALL
+USING (is_superadmin() OR organization_id IN (SELECT organization_id FROM get_user_active_organization_ids()));
+
+CREATE POLICY "Performances Select Policy" ON performances FOR SELECT
+USING (is_superadmin() OR organization_id IN (SELECT organization_id FROM get_user_accessible_organization_ids()));
+CREATE POLICY "Performances Modify Policy" ON performances FOR ALL
+USING (is_superadmin() OR organization_id IN (SELECT organization_id FROM get_user_active_organization_ids()));
+
+CREATE POLICY "Budgets Select Policy" ON budgets FOR SELECT
+USING (is_superadmin() OR organization_id IN (SELECT organization_id FROM get_user_accessible_organization_ids()));
+CREATE POLICY "Budgets Modify Policy" ON budgets FOR ALL
+USING (is_superadmin() OR organization_id IN (SELECT organization_id FROM get_user_active_organization_ids()));
+
+CREATE POLICY "Transactions Select Policy" ON transactions FOR SELECT
+USING (is_superadmin() OR organization_id IN (SELECT organization_id FROM get_user_accessible_organization_ids()));
+CREATE POLICY "Transactions Modify Policy" ON transactions FOR ALL
+USING (is_superadmin() OR organization_id IN (SELECT organization_id FROM get_user_active_organization_ids()));
+
+CREATE POLICY "Reports Select Policy" ON reports FOR SELECT
+USING (is_superadmin() OR organization_id IN (SELECT organization_id FROM get_user_accessible_organization_ids()));
+CREATE POLICY "Reports Modify Policy" ON reports FOR ALL
+USING (is_superadmin() OR organization_id IN (SELECT organization_id FROM get_user_active_organization_ids()));
+
+CREATE POLICY "Tasks Select Policy" ON tasks FOR SELECT
+USING (is_superadmin() OR organization_id IN (SELECT organization_id FROM get_user_accessible_organization_ids()));
+CREATE POLICY "Tasks Modify Policy" ON tasks FOR ALL
+USING (is_superadmin() OR organization_id IN (SELECT organization_id FROM get_user_active_organization_ids()));
+
+-- Notifications & Audit Logs
+CREATE POLICY "Notifications User Policy" ON notifications FOR ALL
+USING (recipient_user_id = auth.uid() OR is_superadmin());
+
+CREATE POLICY "AuditLogs Select Policy" ON audit_logs FOR SELECT
+USING (is_superadmin() OR organization_id IN (SELECT organization_id FROM get_user_accessible_organization_ids()));
+CREATE POLICY "AuditLogs Insert Policy" ON audit_logs FOR INSERT
+WITH CHECK (true);
+

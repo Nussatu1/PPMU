@@ -39,7 +39,7 @@ export const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
     return (
       <div className={cn('w-full space-y-1', containerClassName)}>
         {label && (
-          <label htmlFor={textareaId} className="block text-xs font-semibold text-fg">
+          <label htmlFor={textareaId} className="block text-sm font-semibold text-fg">
             {label}
             {required && <span className="text-red-500 ml-0.5 font-bold">*</span>}
           </label>
@@ -67,7 +67,7 @@ export const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
             onChange?.(e)
           }}
           className={cn(
-            'block w-full rounded-lg border p-3 text-xs sm:text-sm transition-colors resize-y',
+            'block w-full rounded-lg border p-3 text-base sm:text-sm transition-colors resize-y',
             'bg-input-bg text-fg placeholder:text-fg-muted',
             error
               ? 'border-red-500 focus:border-red-500 focus:ring-2 focus:ring-red-500/20'
@@ -78,8 +78,8 @@ export const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
           )}
           {...props}
         />
-        {error && <p className="text-[11px] text-red-500 dark:text-red-400 font-medium">{error}</p>}
-        {helperText && !error && <p className="text-[11px] text-fg-muted">{helperText}</p>}
+        {error && <p className="text-xs text-red-500 dark:text-red-400 font-medium">{error}</p>}
+        {helperText && !error && <p className="text-xs text-fg-muted">{helperText}</p>}
       </div>
     )
   }

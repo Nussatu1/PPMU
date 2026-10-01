@@ -116,7 +116,7 @@ export const NumberInput = React.forwardRef<HTMLInputElement, NumberInputProps>(
             onBlur={() => setIsFocused(false)}
             onChange={handleChange}
             className={cn(
-              'block w-full rounded-lg border py-2 text-xs sm:text-sm transition-colors shadow-2xs font-mono',
+              'block w-full rounded-lg border py-2 min-h-[44px] sm:min-h-0 text-base sm:text-sm transition-colors shadow-2xs font-mono',
               'bg-surface text-fg placeholder:text-fg-muted',
               error
                 ? 'border-red-500 focus:border-red-500 focus:ring-2 focus:ring-red-500/20'

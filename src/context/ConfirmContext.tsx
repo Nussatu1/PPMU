@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useRef, useCallback } from 'react'
+import React, { createContext, useContext, useState, useRef, useCallback, useMemo } from 'react'
 import { Dialog, DialogBackdrop, DialogPanel, DialogTitle } from '@headlessui/react'
 import {
   HeroExclamationTriangle,
@@ -15,11 +15,14 @@ export interface ConfirmOptions {
   cancelLabel?: string
 }
 
-interface ConfirmContextType {
+export interface ConfirmContextType {
   confirm: (options: ConfirmOptions | string) => Promise<boolean>
 }
 
-const ConfirmContext = createContext<ConfirmContextType | undefined>(undefined)
+// Persistent Context instance across Vite HMR module re-evaluations
+export const ConfirmContext =
+  ((globalThis as unknown as { __FILAMENT_CONFIRM_CONTEXT__?: React.Context<ConfirmContextType | undefined> })
+    .__FILAMENT_CONFIRM_CONTEXT__ ||= createContext<ConfirmContextType | undefined>(undefined))
 
 export const ConfirmProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isOpen, setIsOpen] = useState(false)
@@ -54,8 +57,10 @@ export const ConfirmProvider: React.FC<{ children: React.ReactNode }> = ({ child
     primary: 'bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400',
   }[tone]
 
+  const contextValue = useMemo(() => ({ confirm }), [confirm])
+
   return (
-    <ConfirmContext.Provider value={{ confirm }}>
+    <ConfirmContext.Provider value={contextValue}>
       {children}
 
       <Dialog open={isOpen} onClose={handleCancel} className="relative z-50">

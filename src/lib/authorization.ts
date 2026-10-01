@@ -5,6 +5,8 @@
 
 import type {
   User,
+  Organization,
+  OrganizationScopeMode,
   PermissionAction,
   PermissionResource,
   PermissionItem,
@@ -14,6 +16,8 @@ import type {
   AgendaStatus,
   TaskStatus,
 } from '@/types/database'
+import { isDescendant, getDescendantOrganizationIds } from './hierarchyService'
+
 
 // ------------------------------------------------------------------------------
 // 1. ALL AVAILABLE ACTIONS & RESOURCES
@@ -214,46 +218,100 @@ export function hasPermission(
 
 /**
  * Memeriksa apakah user berhak mengakses resource dalam organisasi target (Organization Scope).
- * Superadmin dapat mengakses seluruh organisasi.
- * Admin organisasi hanya dapat mengakses organisasi yang menjadi membership aktifnya.
+ * - Superadmin dapat mengakses seluruh organisasi secara global.
+ * - Mode 'own' (default): Hanya mengizinkan unit aktif organisasi user.
+ * - Mode 'descendants': Mengizinkan unit aktif user + seluruh organisasi turunan (descendants) di bawahnya.
+ * - Sibling (saudara paralel) dan Ancestor/Parent tidak pernah otomatis diizinkan.
  */
 export function enforceScope(
   user: User | null | undefined,
-  targetOrganizationId?: string | null
+  targetOrganizationId?: string | null,
+  mode: OrganizationScopeMode = 'own',
+  organizations: Organization[] = []
 ): boolean {
   if (!user || user.status !== 'active') return false
   if (user.is_superadmin || user.role === 'superadmin') return true
 
-  // If resource has no org id (global), only superadmin can access
+  // Jika resource tidak memiliki org id (global), hanya superadmin yang dapat mengakses
   if (!targetOrganizationId) return false
 
   const membership = user.active_membership
   if (!membership || membership.status !== 'active') return false
 
-  return membership.organization_id === targetOrganizationId
+  const userOrgId = membership.organization_id
+
+  // 1. Own Scope: Selalu sah jika target identik dengan organisasi keanggotaan aktif
+  if (userOrgId === targetOrganizationId) return true
+
+  // 2. Descendants Scope: Hanya jika mode 'descendants' diizinkan dan target adalah turunan sah
+  if (mode === 'descendants' && organizations.length > 0) {
+    const isTargetDescendant = isDescendant(targetOrganizationId, userOrgId, organizations)
+    if (isTargetDescendant) {
+      return true
+    }
+  }
+
+  return false
 }
 
 /**
- * Memeriksa kedua gerbang keamanan sekaligus (Check 1: Permission, Check 2: Organization Scope).
+ * Memeriksa kedua gerbang keamanan sekaligus (Check 1: Permission, Check 2: Hierarchical Organization Scope).
  */
 export function authorize(
   user: User | null | undefined,
   resource: PermissionResource,
   action: PermissionAction,
-  targetOrganizationId?: string | null
+  targetOrganizationId?: string | null,
+  mode: OrganizationScopeMode = 'own',
+  organizations: Organization[] = []
 ): boolean {
   // Check 1: Permission
   const hasPerm = hasPermission(user, resource, action)
   if (!hasPerm) return false
 
-  // Check 2: Scope
-  const inScope = enforceScope(user, targetOrganizationId)
+  // Check 2: Hierarchical Scope
+  const inScope = enforceScope(user, targetOrganizationId, mode, organizations)
   if (!inScope) return false
 
   return true
 }
 
+/**
+ * Memeriksa apakah user berhak mengaktifkan mode agregasi turunan (descendants).
+ * Hanya dizinkan jika:
+ * 1. User berstatus aktif
+ * 2. Superadmin ATAU memiliki role/permission pimpinan/admin/view:descendants
+ * 3. Organisasi saat ini memiliki setidaknya satu sub-unit (bukan leaf node)
+ */
+export function canViewDescendants(
+  user: User | null | undefined,
+  currentOrganization: Organization | null | undefined,
+  organizations: Organization[] = []
+): boolean {
+  if (!user || user.status !== 'active') return false
+  if (user.is_superadmin || user.role === 'superadmin') return true
+
+  if (currentOrganization) {
+    const descendants = getDescendantOrganizationIds(currentOrganization.id, organizations, true)
+    if (descendants.length === 0) return false
+  }
+
+  const role = user.active_membership?.role
+  const roleId = role?.id?.toLowerCase() || ''
+  if (['superadmin', 'admin', 'pimpinan', 'ketua', 'direktur'].some((r) => roleId.includes(r))) {
+    return true
+  }
+
+  const permissions = role?.permissions || []
+  return (
+    permissions.includes('view:descendants') ||
+    permissions.includes('Organization.viewAny') ||
+    permissions.includes('all')
+  )
+}
+
 // ------------------------------------------------------------------------------
+
 // 4. WORKFLOW STATUS STATE TRANSITION ENFORCEMENT
 // ------------------------------------------------------------------------------
 
@@ -310,6 +368,65 @@ export function canTransitionReportStatus(
   }
 
   return validTransitions[current]?.includes(next) ?? false
+}
+
+// ------------------------------------------------------------------------------
+// 5. DOWNWARD ASSIGNMENT AUTHORIZATION (Stage 6)
+// ------------------------------------------------------------------------------
+
+/**
+ * Determines whether `sourceOrganizationId` is authorized to assign a Program
+ * or Task to `targetOrganizationId` under the hierarchical downward-control rule.
+ *
+ * Rules:
+ *   CASE A — source === target (self-assignment)  → PASS
+ *   CASE B — target is a direct child of source   → PASS
+ *   CASE C — target is a deep descendant           → PASS
+ *   CASE D — target is a parent of source          → DENY
+ *   CASE E — target is a sibling of source         → DENY
+ *   CASE F — target is in an unrelated branch      → DENY
+ *   CASE G — superadmin user                       → PASS (any valid target)
+ *
+ * @param sourceOrganizationId  The acting/assigning organization.
+ * @param targetOrganizationId  The receiving/delegated organization.
+ * @param organizations         Full flat list of all organizations (for tree traversal).
+ * @param user                  Optional user context — grants PASS for superadmin.
+ */
+export function canAssignToOrganization(
+  sourceOrganizationId: string,
+  targetOrganizationId: string,
+  organizations: Organization[],
+  user?: User | null
+): boolean {
+  // Superadmin bypasses all hierarchy constraints
+  if (user && (user.is_superadmin || user.role === 'superadmin')) return true
+
+  // Guard: Both IDs must be non-empty
+  if (!sourceOrganizationId || !targetOrganizationId) return false
+
+  // CASE A: Self-assignment always allowed
+  if (sourceOrganizationId === targetOrganizationId) return true
+
+  // CASE B & C: Target must be a descendant of source
+  return isDescendant(targetOrganizationId, sourceOrganizationId, organizations)
+}
+
+/**
+ * Validates assignment and throws if the assignment is not authorized.
+ * Use this inside service layer (dataService) to enforce server-side rules.
+ */
+export function assertCanAssignToOrganization(
+  sourceOrganizationId: string,
+  targetOrganizationId: string,
+  organizations: Organization[],
+  user?: User | null
+): void {
+  if (!canAssignToOrganization(sourceOrganizationId, targetOrganizationId, organizations, user)) {
+    throw new Error(
+      `Akses ditolak: Unit [${sourceOrganizationId}] tidak berwenang menugaskan ke unit [${targetOrganizationId}]. ` +
+      'Penugasan hanya diizinkan ke unit diri sendiri atau turunan yang sah.'
+    )
+  }
 }
 
 export function canTransitionTaskStatus(

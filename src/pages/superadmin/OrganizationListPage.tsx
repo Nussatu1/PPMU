@@ -1,15 +1,27 @@
-import React, { useState, useEffect, useCallback } from 'react'
-import { Breadcrumb } from '@/components/layout/Breadcrumb'
+import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { PageContainer } from '@/components/layout/PageContainer'
 import { Button } from '@/components/ui/Button'
 import { DataTable, type ColumnDef } from '@/components/ui/Table'
 import { Badge } from '@/components/ui/Badge'
+import { MobileCard } from '@/components/ui/MobileCard'
 import { Section } from '@/components/ui/Section'
 import { useToast } from '@/context/ToastContext'
 import { useConfirm } from '@/context/ConfirmContext'
 import { useAuth } from '@/context/AuthContext'
 import { dataService } from '@/lib/dataService'
-import type { Organization, OrganizationMembership, User, RoleEntity } from '@/types/database'
+import type {
+  Organization,
+  OrganizationMembership,
+  User,
+  RoleEntity,
+  OrganizationUnitType,
+} from '@/types/database'
+import {
+  getOrganizationTree,
+  getDescendantOrganizationIds,
+  type OrganizationTreeNode,
+} from '@/lib/hierarchyService'
+import { OrganizationTreeView } from '@/components/organization'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { Textarea } from '@/components/ui/Textarea'
@@ -25,10 +37,12 @@ import {
   HeroUserPlus,
   HeroArrowLeft,
   HeroMapPin,
+  HeroSquares2X2,
 } from '@/components/icons/HeroIcons'
+import { cn } from '@/lib/utils'
 
 export const OrganizationListPage: React.FC = () => {
-  const { user, refreshOrganizations } = useAuth()
+  const { user, currentOrganization, switchOrganization, refreshOrganizations } = useAuth()
   const { success, error } = useToast()
   const { confirm } = useConfirm()
   const [organizations, setOrganizations] = useState<Organization[]>([])
@@ -39,9 +53,10 @@ export const OrganizationListPage: React.FC = () => {
 
   // Screen View Mode: 'list' (Daftar Organisasi) vs 'form' (Layar Penuh Form Organisasi)
   const [viewMode, setViewMode] = useState<'list' | 'form'>('list')
+  const [displayMode, setDisplayMode] = useState<'tree' | 'table'>('tree')
   const [editingOrg, setEditingOrg] = useState<Organization | null>(null)
 
-  // Form Data
+  // Form Data dengan Hierarki
   const [formData, setFormData] = useState({
     name: '',
     short_name: '',
@@ -54,6 +69,8 @@ export const OrganizationListPage: React.FC = () => {
     phone: '',
     address: '',
     logo_url: '',
+    parent_id: null as string | null,
+    unit_type: 'unit' as OrganizationUnitType,
   })
 
   // Read-Only Preview Members Modal (dari badge kolom tabel luar)
@@ -100,6 +117,18 @@ export const OrganizationListPage: React.FC = () => {
     loadData()
   }, [loadData])
 
+  // Cegat MobileAppHeader back saat form aktif agar menutup form dan tetap di /organizations
+  useEffect(() => {
+    if (viewMode !== 'form') return
+    const handleMobileBack = (e: Event) => {
+      e.preventDefault()
+      setViewMode('list')
+      setEditingOrg(null)
+    }
+    window.addEventListener('filament:mobile-back', handleMobileBack)
+    return () => window.removeEventListener('filament:mobile-back', handleMobileBack)
+  }, [viewMode])
+
   const autoGenerateSlug = (nameVal: string) => {
     const generated = nameVal
       .toLowerCase()
@@ -116,8 +145,17 @@ export const OrganizationListPage: React.FC = () => {
     }))
   }
 
-  const openCreateForm = () => {
+  const openCreateForm = (prefilledParentId?: string | null) => {
     setEditingOrg(null)
+    const parentOrg = organizations.find((o) => o.id === prefilledParentId)
+    const suggestedType: OrganizationUnitType = !prefilledParentId
+      ? 'pimpinan'
+      : parentOrg?.unit_type === 'pimpinan'
+      ? 'lembaga'
+      : parentOrg?.unit_type === 'lembaga'
+      ? 'kelompok'
+      : 'unit'
+
     setFormData({
       name: '',
       short_name: '',
@@ -130,6 +168,8 @@ export const OrganizationListPage: React.FC = () => {
       phone: '',
       address: '',
       logo_url: '',
+      parent_id: prefilledParentId || null,
+      unit_type: suggestedType,
     })
     setViewMode('form')
     window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -149,10 +189,49 @@ export const OrganizationListPage: React.FC = () => {
       phone: org.phone || '',
       address: org.address || '',
       logo_url: org.logo_url || '',
+      parent_id: org.parent_id || null,
+      unit_type: (org.unit_type as OrganizationUnitType) || 'unit',
     })
     setViewMode('form')
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
+
+  // Opsi pemilihan parent dengan indentasi hirarkis & pencegahan cycle
+  const parentOptions = useMemo(() => {
+    const tree = getOrganizationTree(null, organizations)
+    const flat: Array<{ id: string; name: string; level: number; code: string }> = []
+    const traverse = (nodes: OrganizationTreeNode[]) => {
+      for (const node of nodes) {
+        flat.push({ id: node.id, name: node.name, level: node.level ?? 0, code: node.code })
+        if (node.children?.length) traverse(node.children)
+      }
+    }
+    traverse(tree)
+
+    // Cegah memilih diri sendiri atau turunan diri sendiri sebagai parent
+    const descendantIds = editingOrg
+      ? getDescendantOrganizationIds(editingOrg.id, organizations, true)
+      : []
+
+    const validOrgs = flat.filter((o) => {
+      if (!editingOrg) return true
+      if (o.id === editingOrg.id) return false
+      if (descendantIds.includes(o.id)) return false
+      return true
+    })
+
+    return [
+      { value: '', label: '— Tidak Ada / Tingkat Tertinggi (Root Node) —' },
+      ...validOrgs.map((o) => ({
+        value: o.id,
+        label: `${'  '.repeat(Math.max(0, o.level))}${o.level > 0 ? '└─ ' : ''}${o.name} (${o.code})`,
+      })),
+    ]
+  }, [organizations, editingOrg])
+
+  // Hitung level secara otomatis (derived) dari parent terpilih
+  const currentParentOrg = organizations.find((o) => o.id === formData.parent_id)
+  const currentDerivedLevel = formData.parent_id && currentParentOrg ? (currentParentOrg.level ?? 0) + 1 : 0
 
   const handleSave = async (e: React.FormEvent, createAnother = false) => {
     e.preventDefault()
@@ -169,34 +248,29 @@ export const OrganizationListPage: React.FC = () => {
         formData.email ||
         `${formData.code.toLowerCase().replace(/[^a-z0-9]/g, '')}@ekosistem.id`
 
+      const payload = {
+        ...formData,
+        slug,
+        email,
+        parent_id: formData.parent_id || null,
+        level: currentDerivedLevel,
+      }
+
       if (editingOrg) {
         await dataService.updateOrganization(
           editingOrg.id,
-          { ...formData, slug, email: editingOrg.email || email },
+          { ...payload, email: editingOrg.email || email },
           user
         )
         success('Organisasi Diperbarui', `Organisasi "${formData.name}" berhasil diperbarui.`)
         await refreshOrganizations()
         setViewMode('list')
       } else {
-        await dataService.createOrganization({ ...formData, slug, email }, user)
+        await dataService.createOrganization(payload, user)
         success('Organisasi Dibuat', `Organisasi "${formData.name}" berhasil ditambahkan ke ekosistem.`)
         await refreshOrganizations()
         if (createAnother) {
-          setFormData({
-            name: '',
-            short_name: '',
-            code: '',
-            slug: '',
-            description: '',
-            status: 'active',
-            period_active: '2024 - 2026',
-            email: '',
-            phone: '',
-            address: '',
-            logo_url: '',
-          })
-          window.scrollTo({ top: 0, behavior: 'smooth' })
+          openCreateForm(formData.parent_id)
         } else {
           setViewMode('list')
         }
@@ -420,26 +494,14 @@ export const OrganizationListPage: React.FC = () => {
         <div className="space-y-6">
           {/* Header List */}
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div>
-              <Breadcrumb
-                items={[
-                  { label: 'Superadmin', href: '/organizations' },
-                  { label: 'Ekosistem' },
-                  { label: 'Manajemen Organisasi' },
-                ]}
-              />
-              <h1 className="text-2xl font-bold tracking-tight text-fg mt-1 flex items-center gap-2.5">
-                <HeroBuildingOffice className="w-7 h-7 text-amber-500" />
-                Manajemen Organisasi
-              </h1>
-              <p className="text-xs text-fg-muted mt-1">
-                Kelola data organisasi mitra serta pengurus akun yang tergabung di dalamnya.
-              </p>
-            </div>
+            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-fg flex items-center gap-2.5">
+              <HeroBuildingOffice className="w-7 h-7 text-amber-500" />
+              Manajemen Organisasi
+            </h1>
 
             <Button
               variant="primary"
-              onClick={openCreateForm}
+              onClick={() => openCreateForm()}
               className="shrink-0 self-start sm:self-auto"
             >
               <HeroPlus className="w-4 h-4 mr-2" />
@@ -467,75 +529,170 @@ export const OrganizationListPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Data Table */}
-          <DataTable
-            columns={columns}
-            data={organizations}
-            isLoading={isLoading}
-            searchPlaceholder="Cari organisasi..."
-            searchKey="name"
-            onEdit={openEditForm}
-            onDelete={handleDelete}
-          />
+          {/* Mode Tampilan: Pohon Hierarki vs Tabel Datar */}
+          <div className="flex items-center justify-between gap-3 flex-wrap pt-1">
+            <div className="inline-flex items-center p-1 rounded-xl bg-surface-muted border border-line text-xs font-semibold">
+              <button
+                type="button"
+                onClick={() => setDisplayMode('tree')}
+                className={cn(
+                  "px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer",
+                  displayMode === 'tree'
+                    ? "bg-surface text-fg shadow-2xs font-bold"
+                    : "text-fg-muted hover:text-fg"
+                )}
+              >
+                <HeroSquares2X2 className="w-3.5 h-3.5" />
+                <span>Struktur Pohon (Hierarki)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setDisplayMode('table')}
+                className={cn(
+                  "px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer",
+                  displayMode === 'table'
+                    ? "bg-surface text-fg shadow-2xs font-bold"
+                    : "text-fg-muted hover:text-fg"
+                )}
+              >
+                <span>Tabel Flat</span>
+              </button>
+            </div>
+            <p className="text-xs text-fg-muted">
+              {displayMode === 'tree' ? 'Navigasi bertingkat Pimpinan → Lembaga → Kelompok/Unit' : 'Tampilan tabel datar seluruh data organisasi'}
+            </p>
+          </div>
+
+          {/* Konten Utama Berdasarkan Mode Tampilan */}
+          {displayMode === 'tree' ? (
+            <OrganizationTreeView
+              organizations={organizations}
+              memberships={memberships}
+              currentOrganization={currentOrganization}
+              onSwitchOrganization={(orgId) => switchOrganization(orgId)}
+              onEdit={openEditForm}
+              onDelete={handleDelete}
+              onCreateChild={(parentId) => openCreateForm(parentId)}
+              onPreviewMembers={(org) => setPreviewMembersOrg(org)}
+            />
+          ) : (
+            <DataTable
+              columns={columns}
+              data={organizations}
+              isLoading={isLoading}
+              searchPlaceholder="Cari organisasi..."
+              searchKey="name"
+              onEdit={openEditForm}
+              onDelete={handleDelete}
+              renderCard={(org) => {
+                const orgMembers = memberships.filter((m) => m.organization_id === org.id)
+                const variantMap: Record<Organization['status'], 'success' | 'warning' | 'danger'> = {
+                  active: 'success',
+                  trial: 'warning',
+                  suspended: 'danger',
+                  inactive: 'danger',
+                  archived: 'warning',
+                }
+                const labelMap: Record<Organization['status'], string> = {
+                  active: 'Aktif',
+                  trial: 'Uji Coba',
+                  suspended: 'Ditangguhkan',
+                  inactive: 'Nonaktif',
+                  archived: 'Diarsipkan',
+                }
+
+                const menuActions = [
+                  {
+                    label: 'Ubah Data Organisasi',
+                    icon: <HeroPencilSquare className="w-4 h-4" />,
+                    onClick: () => openEditForm(org),
+                  },
+                  {
+                    label: 'Hapus Organisasi',
+                    icon: <HeroTrash className="w-4 h-4 text-red-500" />,
+                    onClick: () => handleDelete(org),
+                    danger: true,
+                  },
+                ]
+
+                return (
+                  <MobileCard
+                    title={
+                      <div className="flex items-center gap-2">
+                        {org.logo_url ? (
+                          <img
+                            src={org.logo_url}
+                            alt={org.name}
+                            className="w-8 h-8 rounded-lg object-cover ring-1 ring-line shrink-0"
+                          />
+                        ) : (
+                          <div className="w-8 h-8 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center font-bold text-xs shrink-0">
+                            {org.code.slice(0, 3)}
+                          </div>
+                        )}
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-semibold text-fg text-sm truncate">{org.name}</span>
+                            {org.short_name && (
+                              <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300 shrink-0">
+                                {org.short_name}
+                              </span>
+                            )}
+                          </div>
+                          <p className="font-mono text-[11px] text-fg-muted">{org.code}</p>
+                        </div>
+                      </div>
+                    }
+                    status={<Badge variant={variantMap[org.status]}>{labelMap[org.status]}</Badge>}
+                    meta={
+                      <p className="text-xs text-fg-muted line-clamp-2">
+                        {org.description || 'Tidak ada deskripsi'}
+                      </p>
+                    }
+                    primaryAction={
+                      <button
+                        type="button"
+                        onClick={() => setPreviewMembersOrg(org)}
+                        className="w-full min-h-[44px] px-4 py-2.5 rounded-xl text-xs font-semibold bg-amber-500/10 text-amber-700 dark:text-amber-300 hover:bg-amber-500/20 flex items-center justify-center gap-2 cursor-pointer transition-colors active:scale-[0.99]"
+                      >
+                        <HeroUsers className="w-4 h-4" />
+                        <span>{orgMembers.length} Akun Terdaftar</span>
+                      </button>
+                    }
+                    menuActions={menuActions}
+                  />
+                )
+              }}
+            />
+          )}
         </div>
       ) : (
         /* SCREEN 2: FORM ORGANISASI PENUH (PAGE VIEW - BUKAN MODAL) */
         <div className="w-full min-w-0 flex-1 space-y-5 animate-in fade-in duration-200">
           {/* Header Form Layar Penuh */}
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-2 border-b border-line">
-            <div className="min-w-0">
-              <div className="flex items-center gap-3">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => setViewMode('list')}
-                  className="shrink-0 text-xs"
-                >
-                  <HeroArrowLeft className="w-3.5 h-3.5 mr-1" />
-                  Kembali
-                </Button>
-                <Breadcrumb
-                  items={[
-                    { label: 'Superadmin', href: '/organizations' },
-                    { label: 'Ekosistem' },
-                    { label: 'Manajemen Organisasi' },
-                    { label: editingOrg ? 'Ubah Data Organisasi' : 'Buat Organisasi Baru' },
-                  ]}
-                />
-              </div>
-
-              <div className="flex items-center gap-3 mt-2">
-                <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-fg">
-                  {editingOrg ? 'Ubah Data Organisasi' : 'Buat Organisasi Baru'}
-                </h1>
-                <Badge variant={editingOrg ? 'primary' : 'success'}>
-                  {editingOrg ? 'Mode Edit' : 'Data Baru'}
-                </Badge>
-              </div>
-              <p className="text-xs text-fg-muted mt-0.5">
-                {editingOrg
-                  ? `Perbarui profil entitas organisasi "${editingOrg.name}", subdomain, dan kelola pengurus & anggota terdaftar.`
-                  : 'Daftarkan entitas tenant baru ke dalam ekosistem sistem organisasi terpadu.'}
-              </p>
+          <div className="flex items-center justify-between gap-4 pb-2 border-b border-line">
+            <div className="flex items-center gap-3">
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => setViewMode('list')}
+                className="hidden sm:inline-flex shrink-0 text-xs"
+              >
+                <HeroArrowLeft className="w-3.5 h-3.5 mr-1" />
+                Kembali
+              </Button>
+              <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-fg">
+                {editingOrg ? 'Ubah Organisasi' : 'Tambah Organisasi'}
+              </h1>
             </div>
-
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => setViewMode('list')}
-              className="shrink-0 self-start sm:self-auto"
-            >
-              Batal
-            </Button>
           </div>
 
           {/* Form Utama dengan Grid 12 Kolom Adaptif (AGENTS.md) */}
           <form noValidate onSubmit={(e) => handleSave(e, false)} className="space-y-4">
-            {/* SECTION 1: PROFIL & IDENTITAS RESMI (COMPACT & COLLAPSIBLE) */}
+            {/* SECTION 1: PROFIL & IDENTITAS RESMI */}
             <Section
-              title="Profil & Legalitas Organisasi"
-              description="Identitas resmi entitas organisasi, kode unik, dan status operasional lembaga."
+              title="Profil Organisasi"
               icon={<HeroBuildingOffice className="w-4 h-4" />}
               collapsible
               defaultCollapsed={false}
@@ -571,6 +728,35 @@ export const OrganizationListPage: React.FC = () => {
                   onChange={(e) => setFormData({ ...formData, short_name: e.target.value })}
                   placeholder="Contoh: Jamub"
                   helperText="Singkatan atau nama panggilan resmi organisasi"
+                />
+              </div>
+
+              {/* Organisasi Induk / Parent Unit (7 kolom) */}
+              <div className="col-span-12 md:col-span-7">
+                <Select
+                  label="Organisasi Induk (Parent Unit)"
+                  value={formData.parent_id || ''}
+                  options={parentOptions}
+                  onChange={(e) => setFormData({ ...formData, parent_id: e.target.value || null })}
+                  helperText={`Level hierarki: Tingkat ${currentDerivedLevel} (${formData.parent_id ? 'Sub-unit bawahan' : 'Tingkat tertinggi / Root'}). Dihitung otomatis.`}
+                />
+              </div>
+
+              {/* Tipe Unit Organisasi (5 kolom) */}
+              <div className="col-span-12 md:col-span-5">
+                <Select
+                  label="Tipe Unit Organisasi"
+                  value={formData.unit_type}
+                  options={[
+                    { value: 'pimpinan', label: 'Pimpinan (Pusat / Wilayah)' },
+                    { value: 'lembaga', label: 'Lembaga / Biro / Divisi' },
+                    { value: 'kelompok', label: 'Kelompok / Seksi / Bagian' },
+                    { value: 'unit', label: 'Unit / Pokja Pelaksana' },
+                  ]}
+                  onChange={(e) =>
+                    setFormData({ ...formData, unit_type: e.target.value as OrganizationUnitType })
+                  }
+                  helperText="Klasifikasi struktural unit dalam tata kelola organisasi"
                 />
               </div>
 
@@ -621,8 +807,8 @@ export const OrganizationListPage: React.FC = () => {
                 />
               </div>
 
-              {/* Periode Kepengurusan (4 kolom) */}
-              <div className="col-span-12 md:col-span-4">
+              {/* Periode Kepengurusan (12 kolom) */}
+              <div className="col-span-12">
                 <Select
                   label="Periode Kepengurusan"
                   value={formData.period_active}
@@ -636,10 +822,9 @@ export const OrganizationListPage: React.FC = () => {
               </div>
             </Section>
 
-            {/* SECTION 2: KONTAK, DOMISILI & PROFIL LEMBAGA (COMPACT & COLLAPSIBLE) */}
+            {/* SECTION 2: KONTAK & DOMISILI */}
             <Section
-              title="Kontak, Domisili Sekretariat & Deskripsi"
-              description="Saluran komunikasi resmi lembaga dan lokasi kantor sekretariat operasional."
+              title="Kontak & Domisili"
               icon={<HeroMapPin className="w-4 h-4" />}
               collapsible
               defaultCollapsed={false}
@@ -680,17 +865,17 @@ export const OrganizationListPage: React.FC = () => {
               {/* Deskripsi (12 kolom) */}
               <div className="col-span-12">
                 <Textarea
-                  label="Deskripsi & Catatan Profil Lembaga"
+                  label="Deskripsi Profil Lembaga"
                   rows={2}
                   autoGrow
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  placeholder="Tuliskan catatan singkat atau cakupan wilayah kerja organisasi..."
+                  placeholder="Tuliskan catatan singkat..."
                 />
               </div>
             </Section>
 
-            {/* SECTION 3: PENGURUS & ANGGOTA ORGANISASI (HANYA MUNCUL DI FORM UBAH) */}
+            {/* SECTION 3: PENGURUS & ANGGOTA ORGANISASI */}
             {editingOrg && (
               <div className="rounded-xl border border-line bg-surface shadow-xs overflow-hidden">
                 <div className="p-4 sm:p-5 border-b border-line bg-surface-muted/50 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -698,14 +883,9 @@ export const OrganizationListPage: React.FC = () => {
                     <div className="w-8 h-8 rounded-lg bg-surface-muted ring-1 ring-line flex items-center justify-center text-amber-500 shrink-0">
                       <HeroUsers className="w-4 h-4" />
                     </div>
-                    <div>
-                      <h3 className="text-base font-bold text-fg tracking-tight">
-                        Pengurus & Anggota Organisasi
-                      </h3>
-                      <p className="text-xs text-fg-muted mt-0.5 leading-relaxed">
-                        Atur akun yang tergabung, tingkat wewenang (Admin/Anggota), dan penetapan peran di organisasi ini.
-                      </p>
-                    </div>
+                    <h3 className="text-base font-bold text-fg tracking-tight">
+                      Pengurus & Anggota
+                    </h3>
                   </div>
 
                   <Button
@@ -717,12 +897,75 @@ export const OrganizationListPage: React.FC = () => {
                     className="shrink-0 text-xs self-start sm:self-auto"
                   >
                     <HeroUserPlus className="w-4 h-4 mr-1.5" />
-                    Tambah Akun ke Organisasi
+                    Tambah Akun
                   </Button>
                 </div>
 
-                {/* Table Anggota di Form Ubah */}
-                <div className="overflow-x-auto">
+                {/* Sub-Tabel Anggota di Form Ubah: Dual-view (Mobile Compact List & Desktop Table) */}
+                {/* 1. Mobile Compact List (< sm) */}
+                <div className="block sm:hidden space-y-2.5">
+                  {currentEditingOrgMembers.length === 0 ? (
+                    <div className="py-6 text-center text-xs text-fg-muted bg-surface-muted/50 rounded-xl border border-line">
+                      Belum ada akun pengurus yang tergabung dalam organisasi ini.
+                    </div>
+                  ) : (
+                    currentEditingOrgMembers.map((m) => {
+                      const isAdm = (m.level || 'admin') === 'admin'
+                      const initial = (m.user?.name || 'A').slice(0, 1).toUpperCase()
+                      return (
+                        <div
+                          key={m.id}
+                          className="p-3.5 rounded-xl border border-line bg-surface flex flex-col gap-2.5"
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <div className="w-9 h-9 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 font-bold text-xs flex items-center justify-center shrink-0 ring-1 ring-amber-500/20">
+                                {initial}
+                              </div>
+                              <div className="min-w-0">
+                                <p className="font-semibold text-sm text-fg truncate">{m.user?.name}</p>
+                                <p className="text-xs text-fg-muted font-mono truncate">{m.user?.email}</p>
+                              </div>
+                            </div>
+                            <Badge variant={isAdm ? 'primary' : 'gray'}>
+                              {isAdm ? 'Admin' : 'Anggota'}
+                            </Badge>
+                          </div>
+
+                          <div className="flex items-center justify-between pt-2 border-t border-line/60 text-xs">
+                            <span className="text-fg-muted">
+                              Peran: <strong className="text-fg">{m.role?.name || 'Pengurus'}</strong>
+                            </span>
+
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => openEditMemberModal(m)}
+                                className="w-11 h-11 rounded-xl flex items-center justify-center text-fg-muted hover:text-amber-600 bg-surface-muted hover:bg-surface border border-line transition cursor-pointer"
+                                aria-label="Ubah Peran"
+                                title="Ubah Peran"
+                              >
+                                <HeroPencilSquare className="w-4 h-4" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setMemberToRemove(m)}
+                                className="w-11 h-11 rounded-xl flex items-center justify-center text-red-600 hover:text-red-700 bg-red-500/10 hover:bg-red-500/20 transition cursor-pointer"
+                                aria-label="Cabut dari Organisasi"
+                                title="Cabut dari Organisasi"
+                              >
+                                <HeroTrash className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })
+                  )}
+                </div>
+
+                {/* 2. Desktop Table (>= sm / final baseline) */}
+                <div className="hidden sm:block overflow-x-auto">
                   <table className="w-full text-left text-xs">
                     <thead className="bg-surface-muted text-fg-muted font-semibold border-b border-line">
                       <tr>
@@ -753,7 +996,7 @@ export const OrganizationListPage: React.FC = () => {
                                   </div>
                                   <div>
                                     <p className="font-semibold text-fg">{m.user?.name}</p>
-                                    <p className="text-[11px] text-fg-muted font-mono">
+                                    <p className="text-xs text-fg-muted font-mono">
                                       {m.user?.email}
                                     </p>
                                   </div>
@@ -843,48 +1086,87 @@ export const OrganizationListPage: React.FC = () => {
             </p>
 
             <div className="rounded-xl border border-line overflow-hidden bg-surface">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-surface-muted text-fg-muted font-semibold border-b border-line">
-                  <tr>
-                    <th className="py-2.5 px-3">Nama Akun</th>
-                    <th className="py-2.5 px-3">Tingkat</th>
-                    <th className="py-2.5 px-3">Peran</th>
-                    <th className="py-2.5 px-3">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-line">
-                  {previewOrgMembers.length === 0 ? (
-                    <tr>
-                      <td colSpan={4} className="py-6 text-center text-fg-muted">
-                        Belum ada anggota yang terdaftar pada organisasi ini.
-                      </td>
-                    </tr>
-                  ) : (
-                    previewOrgMembers.map((m) => {
-                      const isAdm = (m.level || 'admin') === 'admin'
-                      return (
-                        <tr key={m.id} className="hover:bg-hover-bg transition">
-                          <td className="py-2.5 px-3">
-                            <p className="font-semibold text-fg">{m.user?.name}</p>
-                            <p className="text-[11px] text-fg-muted font-mono">{m.user?.email}</p>
-                          </td>
-                          <td className="py-2.5 px-3">
-                            <Badge variant={isAdm ? 'primary' : 'gray'}>
-                              {isAdm ? 'Admin Organisasi' : 'Anggota Organisasi'}
-                            </Badge>
-                          </td>
-                          <td className="py-2.5 px-3 font-medium text-fg">
+              {/* 1. Mobile Read-Only Contact Roster (< sm) */}
+              <div className="block sm:hidden divide-y divide-line">
+                {previewOrgMembers.length === 0 ? (
+                  <div className="py-6 text-center text-xs text-fg-muted">
+                    Belum ada anggota yang terdaftar pada organisasi ini.
+                  </div>
+                ) : (
+                  previewOrgMembers.map((m) => {
+                    const isAdm = (m.level || 'admin') === 'admin'
+                    const initial = (m.user?.name || 'A').slice(0, 1).toUpperCase()
+                    return (
+                      <div key={m.id} className="p-3 flex items-center justify-between gap-2.5">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className="w-8 h-8 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 font-bold text-xs flex items-center justify-center shrink-0 ring-1 ring-amber-500/20">
+                            {initial}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="font-semibold text-xs text-fg truncate">{m.user?.name}</p>
+                            <p className="text-xs text-fg-muted font-mono truncate">{m.user?.email}</p>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col items-end gap-1 shrink-0">
+                          <Badge variant={isAdm ? 'primary' : 'gray'}>
+                            {isAdm ? 'Admin' : 'Anggota'}
+                          </Badge>
+                          <span className="text-[11px] text-fg-muted font-medium">
                             {m.role?.name || 'Pengurus'}
-                          </td>
-                          <td className="py-2.5 px-3">
-                            <Badge variant="success">Aktif</Badge>
-                          </td>
-                        </tr>
-                      )
-                    })
-                  )}
-                </tbody>
-              </table>
+                          </span>
+                        </div>
+                      </div>
+                    )
+                  })
+                )}
+              </div>
+
+              {/* 2. Desktop Table (>= sm / final baseline) */}
+              <div className="hidden sm:block overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-surface-muted text-fg-muted font-semibold border-b border-line">
+                    <tr>
+                      <th className="py-2.5 px-3">Nama Akun</th>
+                      <th className="py-2.5 px-3">Tingkat</th>
+                      <th className="py-2.5 px-3">Peran</th>
+                      <th className="py-2.5 px-3">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-line">
+                    {previewOrgMembers.length === 0 ? (
+                      <tr>
+                        <td colSpan={4} className="py-6 text-center text-fg-muted">
+                          Belum ada anggota yang terdaftar pada organisasi ini.
+                        </td>
+                      </tr>
+                    ) : (
+                      previewOrgMembers.map((m) => {
+                        const isAdm = (m.level || 'admin') === 'admin'
+                        return (
+                          <tr key={m.id} className="hover:bg-hover-bg transition">
+                            <td className="py-2.5 px-3">
+                              <p className="font-semibold text-fg">{m.user?.name}</p>
+                              <p className="text-xs text-fg-muted font-mono">{m.user?.email}</p>
+                            </td>
+                            <td className="py-2.5 px-3">
+                              <Badge variant={isAdm ? 'primary' : 'gray'}>
+                                {isAdm ? 'Admin Organisasi' : 'Anggota Organisasi'}
+                              </Badge>
+                            </td>
+                            <td className="py-2.5 px-3 font-medium text-fg">
+                              {m.role?.name || 'Pengurus'}
+                            </td>
+                            <td className="py-2.5 px-3">
+                              <Badge variant="success">Aktif</Badge>
+                            </td>
+                          </tr>
+                        )
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
 
             <div className="flex justify-end pt-2">

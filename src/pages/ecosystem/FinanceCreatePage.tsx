@@ -151,10 +151,10 @@ export const FinanceCreatePage: React.FC = () => {
               { label: isIncome ? 'Catat Pemasukan' : 'Catat Pengeluaran' },
             ]}
           />
-          <h1 className="text-2xl font-bold tracking-tight text-fg">
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-fg">
             {isIncome ? 'Catat Pemasukan Kas Baru' : 'Catat Pengeluaran Baru'}
           </h1>
-          <p className="text-sm text-fg-muted">
+          <p className="hidden sm:block text-xs sm:text-sm text-fg-muted">
             {isIncome
               ? 'Bukukan penerimaan kas masuk, dropping pagu anggaran dari Pengurus 1, kas santri, donasi, atau infaq.'
               : 'Bukukan transaksi mutasi belanja program, alokasi pos anggaran, serta lampiran bukti nota digital.'}
@@ -164,6 +164,7 @@ export const FinanceCreatePage: React.FC = () => {
           variant="secondary"
           icon={<HeroArrowLeft className="w-4 h-4" />}
           onClick={() => navigate('/finance')}
+          className="hidden sm:inline-flex"
         >
           Kembali
         </Button>
@@ -214,7 +215,7 @@ export const FinanceCreatePage: React.FC = () => {
                       </span>
                     )}
                   </div>
-                  <p className="text-[11px] text-fg-muted mt-0.5 leading-snug">
+                  <p className="hidden sm:block text-[11px] text-fg-muted mt-0.5 leading-snug">
                     Dropping dana dari Pengurus 1, kas santri, donasi, sumbangan, atau infaq.
                   </p>
                 </div>
@@ -247,7 +248,7 @@ export const FinanceCreatePage: React.FC = () => {
                       </span>
                     )}
                   </div>
-                  <p className="text-[11px] text-fg-muted mt-0.5 leading-snug">
+                  <p className="hidden sm:block text-[11px] text-fg-muted mt-0.5 leading-snug">
                     Belanja kegiatan program, operasional, bisyarah pembina, atau sarana ibadah.
                   </p>
                 </div>
@@ -383,15 +384,17 @@ export const FinanceCreatePage: React.FC = () => {
               type="button"
               variant="secondary"
               onClick={() => navigate('/finance')}
+              className="w-full sm:w-auto justify-center"
             >
               Batal
             </Button>
-            <div className="flex items-center gap-3">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 w-full sm:w-auto">
               <Button
                 type="button"
                 variant="secondary"
                 disabled={isSaving}
                 onClick={(e) => handleSave(e, true)}
+                className="w-full sm:w-auto justify-center"
               >
                 Buat & Buat Lainnya
               </Button>
@@ -399,6 +402,7 @@ export const FinanceCreatePage: React.FC = () => {
                 type="submit"
                 variant="primary"
                 disabled={isSaving}
+                className="w-full sm:w-auto justify-center"
               >
                 {isSaving ? 'Memproses...' : 'Buat'}
               </Button>

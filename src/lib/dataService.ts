@@ -62,31 +62,172 @@ import type {
   AgendaStatus,
   ReportStatus,
   TaskStatus,
+  OrganizationScopeInput,
+  OrganizationScopeMode,
 } from '@/types/database'
 import {
   authorize,
+  enforceScope,
   canTransitionProgramStatus,
   canTransitionAgendaStatus,
   canTransitionReportStatus,
   canTransitionTaskStatus,
+  assertCanAssignToOrganization,
 } from './authorization'
 
-// Local storage helper for mock persistence
-function getStorage<T>(key: string, defaultValue: T): T {
+import {
+  getParentOrganization,
+  getChildrenOrganizations,
+  getDescendantOrganizationIds,
+  getAncestorOrganizationIds,
+  isAncestor,
+  isDescendant,
+  getOrganizationTree,
+  resolveOrganizationScope,
+  type OrganizationTreeNode,
+} from './hierarchyService'
+
+// ==============================================================================
+// STAGE 9: LOCAL DEMO DATABASE PERSISTENCE & ACCOUNT ISOLATION LAYER
+// ==============================================================================
+
+const DEMO_STORAGE_PREFIX = 'filament_demo_v3'
+const LEGACY_STORAGE_PREFIX = 'filament_bakid_v2'
+
+// In-memory account cache: accountId -> collection -> data array
+const accountCache = new Map<string, Map<string, any>>()
+
+// Fallback storage when localStorage is unavailable (e.g. Node CLI testing)
+const nodeStorageFallback = new Map<string, string>()
+
+function getRawStorageItem(key: string): string | null {
   try {
-    const item = localStorage.getItem(`filament_bakid_v2_${key}`)
-    return item ? JSON.parse(item) : defaultValue
+    if (typeof localStorage !== 'undefined') {
+      return localStorage.getItem(key)
+    }
+    return nodeStorageFallback.get(key) || null
   } catch {
-    return defaultValue
+    return nodeStorageFallback.get(key) || null
   }
 }
 
-function setStorage<T>(key: string, value: T): void {
+function setRawStorageItem(key: string, value: string): void {
   try {
-    localStorage.setItem(`filament_bakid_v2_${key}`, JSON.stringify(value))
-  } catch (err) {
-    console.error('Failed to save to localStorage:', err)
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(key, value)
+    }
+    nodeStorageFallback.set(key, value)
+  } catch {
+    nodeStorageFallback.set(key, value)
   }
+}
+
+function removeRawStorageItem(key: string): void {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.removeItem(key)
+    }
+    nodeStorageFallback.delete(key)
+  } catch {}
+}
+
+// Operational collections that must be strictly isolated per account
+const PARTITIONED_COLLECTIONS = new Set([
+  'programs',
+  'agendas',
+  'performances',
+  'budgets',
+  'transactions',
+  'reports',
+  'tasks',
+  'notifications',
+  'audit_logs',
+])
+
+function resolveCurrentAccountId(explicitUser?: User | null): string {
+  if (explicitUser?.id) return explicitUser.id
+  try {
+    const stored = getRawStorageItem('filament_bakid_auth_user')
+    if (stored) {
+      const parsed = JSON.parse(stored)
+      if (parsed?.id) return parsed.id
+    }
+  } catch {}
+  return '00000000-0000-0000-0000-000000000001' // Default superadmin account ID
+}
+
+let activeAccountId = resolveCurrentAccountId()
+
+function getAccountStorage<T>(accountId: string, collection: string, defaultValue: T): T {
+  if (!accountCache.has(accountId)) {
+    accountCache.set(accountId, new Map())
+  }
+  const accMap = accountCache.get(accountId)!
+  if (accMap.has(collection)) {
+    return accMap.get(collection)
+  }
+
+  const isPartitioned = PARTITIONED_COLLECTIONS.has(collection)
+  const primaryKey = isPartitioned
+    ? `${DEMO_STORAGE_PREFIX}_${accountId}_${collection}`
+    : `${DEMO_STORAGE_PREFIX}_shared_${collection}`
+
+  const raw = getRawStorageItem(primaryKey)
+  if (raw !== null) {
+    try {
+      const parsed = JSON.parse(raw)
+      if (parsed !== null && parsed !== undefined) {
+        accMap.set(collection, parsed)
+        return parsed
+      }
+    } catch (e) {
+      console.warn(`[demoStore] Malformed data detected in ${primaryKey}. Falling back without overwrite.`, e)
+      accMap.set(collection, defaultValue)
+      return defaultValue
+    }
+  }
+
+  // Check legacy key for initial backward-compatible migration on default account
+  const legacyKey = `${LEGACY_STORAGE_PREFIX}_${collection}`
+  const legacyRaw = getRawStorageItem(legacyKey)
+  if (legacyRaw !== null && accountId === '00000000-0000-0000-0000-000000000001') {
+    try {
+      const parsed = JSON.parse(legacyRaw)
+      if (parsed !== null && parsed !== undefined) {
+        setRawStorageItem(primaryKey, JSON.stringify(parsed))
+        accMap.set(collection, parsed)
+        return parsed
+      }
+    } catch {}
+  }
+
+  // Initial Seed: clone defaultValue deeply so accounts cannot mutate each other's seed objects
+  const seeded = JSON.parse(JSON.stringify(defaultValue))
+  setRawStorageItem(primaryKey, JSON.stringify(seeded))
+  accMap.set(collection, seeded)
+  return seeded
+}
+
+function setAccountStorage<T>(accountId: string, collection: string, value: T): void {
+  if (!accountCache.has(accountId)) {
+    accountCache.set(accountId, new Map())
+  }
+  accountCache.get(accountId)!.set(collection, value)
+
+  const isPartitioned = PARTITIONED_COLLECTIONS.has(collection)
+  const primaryKey = isPartitioned
+    ? `${DEMO_STORAGE_PREFIX}_${accountId}_${collection}`
+    : `${DEMO_STORAGE_PREFIX}_shared_${collection}`
+
+  setRawStorageItem(primaryKey, JSON.stringify(value))
+}
+
+function getStorage<T>(key: string, defaultValue: T): T {
+  return getAccountStorage(activeAccountId, key, defaultValue)
+}
+
+function setStorage<T>(key: string, value: T): void {
+  setAccountStorage(activeAccountId, key, value)
 }
 
 let localUsers: User[] = getStorage('users', initialUsers).map((u) => {
@@ -125,6 +266,27 @@ let localTasks: Task[] = getStorage('tasks', initialTasks)
 let localNotifications: Notification[] = getStorage('notifications', initialNotifications)
 let localAuditLogs: AuditLog[] = getStorage('audit_logs', initialAuditLogs)
 
+function loadAccountData(accountId: string): void {
+  activeAccountId = accountId
+
+  localPrograms = getAccountStorage(accountId, 'programs', initialPrograms)
+  localAgendas = getAccountStorage(accountId, 'agendas', initialAgendas)
+  localPerformances = getAccountStorage(accountId, 'performances', initialPerformances)
+  localBudgets = getAccountStorage(accountId, 'budgets', initialBudgets)
+  localTransactions = getAccountStorage(accountId, 'transactions', initialTransactions)
+  localReports = getAccountStorage(accountId, 'reports', initialReports)
+  localTasks = getAccountStorage(accountId, 'tasks', initialTasks)
+  localNotifications = getAccountStorage(accountId, 'notifications', initialNotifications)
+  localAuditLogs = getAccountStorage(accountId, 'audit_logs', initialAuditLogs)
+}
+
+function ensureAccountContext(user?: User | null): void {
+  const targetId = resolveCurrentAccountId(user)
+  if (targetId !== activeAccountId) {
+    loadAccountData(targetId)
+  }
+}
+
 function logAudit(
   user: User | null | undefined,
   action: PermissionAction,
@@ -156,7 +318,8 @@ function verifyAccess(
   user: User | null | undefined,
   resource: PermissionResource,
   action: PermissionAction,
-  targetOrgId?: string
+  targetOrgId?: string,
+  mode: OrganizationScopeMode = 'own'
 ): void {
   if (!user) return
 
@@ -169,13 +332,16 @@ function verifyAccess(
     throw new Error('Akses ditolak: Pengguna tidak memiliki keanggotaan organisasi yang aktif.')
   }
 
-  // Cross-tenant protection: reject if targetOrgId belongs to another tenant
-  if (targetOrgId && targetOrgId !== userOrgId) {
-    throw new Error('Akses ditolak: Percobaan manipulasi scope organisasi lintas tenant (Cross-tenant violation).')
+  // Hierarchical scope verification:
+  // - Mode 'own': targetOrgId harus identik dengan userOrgId.
+  // - Mode 'descendants': targetOrgId boleh userOrgId atau salah satu descendant-nya.
+  const inScope = enforceScope(user, targetOrgId, mode, localOrganizations)
+  if (!inScope) {
+    throw new Error('Akses ditolak: Percobaan manipulasi scope organisasi di luar wewenang hierarki.')
   }
 
   // Authorize against role & permission matrix
-  if (!authorize(user, resource, action, userOrgId)) {
+  if (!authorize(user, resource, action, targetOrgId, mode, localOrganizations)) {
     throw new Error(`Akses ditolak: Anda tidak memiliki izin [${resource}.${action}] pada organisasi ini.`)
   }
 }
@@ -192,6 +358,28 @@ function verifySuperadmin(user?: User | null): void {
 const delay = (ms = 120) => new Promise((resolve) => setTimeout(resolve, ms))
 
 export const dataService = {
+  // --------------------------------------------------------------------------
+  // DEMO ACCOUNT PERSISTENCE CONTROLS
+  // --------------------------------------------------------------------------
+  setActiveAccount(userOrId?: User | string | null): void {
+    const id = typeof userOrId === 'string' ? userOrId : resolveCurrentAccountId(userOrId)
+    loadAccountData(id)
+  },
+  getActiveAccountId(): string {
+    return activeAccountId
+  },
+  resetDemoData(accountId?: string): void {
+    const target = accountId || activeAccountId
+    PARTITIONED_COLLECTIONS.forEach((col) => {
+      const key = `${DEMO_STORAGE_PREFIX}_${target}_${col}`
+      removeRawStorageItem(key)
+    })
+    accountCache.delete(target)
+    if (target === activeAccountId) {
+      loadAccountData(target)
+    }
+  },
+
   // --------------------------------------------------------------------------
   // USERS
   // --------------------------------------------------------------------------
@@ -1754,20 +1942,30 @@ export const dataService = {
   // --------------------------------------------------------------------------
   // 6. PROGRAM KERJA (Lifecycle Flow)
   // --------------------------------------------------------------------------
-  async getPrograms(organizationId: string, user?: User | null): Promise<Program[]> {
+  async getPrograms(
+    scope: OrganizationScopeInput,
+    user?: User | null
+  ): Promise<Program[]> {
+    ensureAccountContext(user)
     await delay(100)
-    verifyAccess(user, 'Program', 'viewAny', organizationId)
+    const { organizationId, mode, targetIds } = resolveOrganizationScope(scope, localOrganizations)
+    verifyAccess(user, 'Program', 'viewAny', organizationId, mode)
+    const targetSet = new Set(targetIds)
     return localPrograms
-      .filter((p) => p.organization_id === organizationId)
+      .filter((p) => targetSet.has(p.organization_id))
       .map((p) => ({
         ...p,
         section: localSections.find((s) => s.id === p.section_id),
         agendas: localAgendas.filter((a) => a.program_id === p.id),
         performances: localPerformances.filter((perf) => perf.program_id === p.id),
+        assigned_to_organization: p.assigned_to_organization_id
+          ? localOrganizations.find((o) => o.id === p.assigned_to_organization_id) || null
+          : null,
       }))
   },
 
   async getProgramById(id: string, user?: User | null): Promise<Program | null> {
+    ensureAccountContext(user)
     await delay(80)
     const program = localPrograms.find((p) => p.id === id)
     if (!program) return null
@@ -1777,14 +1975,29 @@ export const dataService = {
       section: localSections.find((s) => s.id === program.section_id),
       agendas: localAgendas.filter((a) => a.program_id === program.id),
       performances: localPerformances.filter((perf) => perf.program_id === program.id),
+      assigned_to_organization: program.assigned_to_organization_id
+        ? localOrganizations.find((o) => o.id === program.assigned_to_organization_id) || null
+        : null,
     }
   },
 
   async createProgram(
-    data: Omit<Program, 'id' | 'created_at' | 'updated_at' | 'section' | 'agendas' | 'performances'>,
+    data: Omit<Program, 'id' | 'created_at' | 'updated_at' | 'section' | 'agendas' | 'performances' | 'organization' | 'pic_personnel' | 'assigned_to_organization'>,
     user?: User | null
   ): Promise<Program> {
+    ensureAccountContext(user)
     verifyAccess(user, 'Program', 'create', data.organization_id)
+
+    // Stage 6: Enforce downward-control assignment authorization
+    if (data.assigned_to_organization_id) {
+      assertCanAssignToOrganization(
+        data.organization_id,
+        data.assigned_to_organization_id,
+        localOrganizations,
+        user
+      )
+    }
+
     await delay(120)
     const newProg: Program = {
       ...data,
@@ -1825,9 +2038,25 @@ export const dataService = {
     data: Partial<Program>,
     user?: User | null
   ): Promise<Program> {
+    ensureAccountContext(user)
     const prog = localPrograms.find((p) => p.id === id)
     if (!prog) throw new Error('Program kerja tidak ditemukan')
     verifyAccess(user, 'Program', 'update', prog.organization_id)
+
+    // Stage 6: Enforce downward-control assignment authorization on change
+    if ('assigned_to_organization_id' in data) {
+      const targetId = data.assigned_to_organization_id
+      if (targetId) {
+        assertCanAssignToOrganization(
+          prog.organization_id,
+          targetId,
+          localOrganizations,
+          user
+        )
+      }
+      // If targetId is null/undefined — clearing the assignment is always allowed
+    }
+
     await delay(120)
     const index = localPrograms.findIndex((p) => p.id === id)
     const oldVal = { ...localPrograms[index] }
@@ -1837,7 +2066,20 @@ export const dataService = {
       updated_at: new Date().toISOString(),
     }
     setStorage('programs', localPrograms)
-    logAudit(user, 'update', 'Program', id, prog.organization_id, oldVal as unknown as Record<string, unknown>, localPrograms[index] as unknown as Record<string, unknown>)
+
+    // Audit assignment change specifically for traceability
+    const assignmentChanged = 'assigned_to_organization_id' in data &&
+      data.assigned_to_organization_id !== oldVal.assigned_to_organization_id
+    if (assignmentChanged) {
+      logAudit(
+        user, 'update', 'Program', id, prog.organization_id,
+        { assigned_to_organization_id: oldVal.assigned_to_organization_id },
+        { assigned_to_organization_id: data.assigned_to_organization_id }
+      )
+    } else {
+      logAudit(user, 'update', 'Program', id, prog.organization_id, oldVal as unknown as Record<string, unknown>, localPrograms[index] as unknown as Record<string, unknown>)
+    }
+
     return localPrograms[index]
   },
 
@@ -1846,6 +2088,7 @@ export const dataService = {
     nextStatus: ProgramStatus,
     user?: User | null
   ): Promise<Program> {
+    ensureAccountContext(user)
     const prog = localPrograms.find((p) => p.id === id)
     if (!prog) throw new Error('Program kerja tidak ditemukan')
     verifyAccess(user, 'Program', 'update', prog.organization_id)
@@ -1873,6 +2116,7 @@ export const dataService = {
   },
 
   async deleteProgram(id: string, user?: User | null): Promise<void> {
+    ensureAccountContext(user)
     const prog = localPrograms.find((p) => p.id === id)
     if (!prog) throw new Error('Program kerja tidak ditemukan')
     verifyAccess(user, 'Program', 'delete', prog.organization_id)
@@ -1885,10 +2129,17 @@ export const dataService = {
   // --------------------------------------------------------------------------
   // 7. AGENDA & KEGIATAN
   // --------------------------------------------------------------------------
-  async getAgendas(organizationId: string, programId?: string, user?: User | null): Promise<Agenda[]> {
+  async getAgendas(
+    scope: OrganizationScopeInput,
+    programId?: string,
+    user?: User | null
+  ): Promise<Agenda[]> {
+    ensureAccountContext(user)
     await delay(80)
-    verifyAccess(user, 'Agenda', 'viewAny', organizationId)
-    let filtered = localAgendas.filter((a) => a.organization_id === organizationId)
+    const { organizationId, mode, targetIds } = resolveOrganizationScope(scope, localOrganizations)
+    verifyAccess(user, 'Agenda', 'viewAny', organizationId, mode)
+    const targetSet = new Set(targetIds)
+    let filtered = localAgendas.filter((a) => targetSet.has(a.organization_id))
     if (programId) {
       filtered = filtered.filter((a) => a.program_id === programId)
     }
@@ -1900,10 +2151,25 @@ export const dataService = {
     }))
   },
 
+  async getAgendaById(id: string, user?: User | null): Promise<Agenda | null> {
+    ensureAccountContext(user)
+    await delay(80)
+    const agenda = localAgendas.find((a) => a.id === id)
+    if (!agenda) return null
+    verifyAccess(user, 'Agenda', 'view', agenda.organization_id)
+    return {
+      ...agenda,
+      program: localPrograms.find((p) => p.id === agenda.program_id),
+      section: localSections.find((s) => s.id === agenda.section_id),
+      pic_user: agenda.pic_user_id ? localUsers.find((u) => u.id === agenda.pic_user_id) : undefined,
+    }
+  },
+
   async createAgenda(
     data: Omit<Agenda, 'id' | 'created_at' | 'program' | 'section' | 'pic_user'>,
     user?: User | null
   ): Promise<Agenda> {
+    ensureAccountContext(user)
     verifyAccess(user, 'Agenda', 'create', data.organization_id)
     await delay(100)
     const newAgenda: Agenda = {
@@ -1922,6 +2188,7 @@ export const dataService = {
     data: Partial<Agenda>,
     user?: User | null
   ): Promise<Agenda> {
+    ensureAccountContext(user)
     const agenda = localAgendas.find((a) => a.id === id)
     if (!agenda) throw new Error('Agenda tidak ditemukan')
     verifyAccess(user, 'Agenda', 'update', agenda.organization_id)
@@ -1939,6 +2206,7 @@ export const dataService = {
     nextStatus: AgendaStatus,
     user?: User | null
   ): Promise<Agenda> {
+    ensureAccountContext(user)
     const agenda = localAgendas.find((a) => a.id === id)
     if (!agenda) throw new Error('Agenda tidak ditemukan')
     verifyAccess(user, 'Agenda', 'update', agenda.organization_id)
@@ -1957,6 +2225,7 @@ export const dataService = {
   },
 
   async deleteAgenda(id: string, user?: User | null): Promise<void> {
+    ensureAccountContext(user)
     const agenda = localAgendas.find((a) => a.id === id)
     if (!agenda) throw new Error('Agenda tidak ditemukan')
     verifyAccess(user, 'Agenda', 'delete', agenda.organization_id)
@@ -1969,10 +2238,17 @@ export const dataService = {
   // --------------------------------------------------------------------------
   // 8. CAPAIAN KINERJA (KPI & Bukti)
   // --------------------------------------------------------------------------
-  async getPerformances(organizationId: string, programId?: string, user?: User | null): Promise<Performance[]> {
+  async getPerformances(
+    scope: OrganizationScopeInput,
+    programId?: string,
+    user?: User | null
+  ): Promise<Performance[]> {
+    ensureAccountContext(user)
     await delay(80)
-    verifyAccess(user, 'Performance', 'viewAny', organizationId)
-    let filtered = localPerformances.filter((p) => p.organization_id === organizationId)
+    const { organizationId, mode, targetIds } = resolveOrganizationScope(scope, localOrganizations)
+    verifyAccess(user, 'Performance', 'viewAny', organizationId, mode)
+    const targetSet = new Set(targetIds)
+    let filtered = localPerformances.filter((p) => targetSet.has(p.organization_id))
     if (programId) {
       filtered = filtered.filter((p) => p.program_id === programId)
     }
@@ -1982,10 +2258,23 @@ export const dataService = {
     }))
   },
 
+  async getPerformanceById(id: string, user?: User | null): Promise<Performance | null> {
+    ensureAccountContext(user)
+    await delay(80)
+    const perf = localPerformances.find((p) => p.id === id)
+    if (!perf) return null
+    verifyAccess(user, 'Performance', 'view', perf.organization_id)
+    return {
+      ...perf,
+      program: localPrograms.find((p) => p.id === perf.program_id),
+    }
+  },
+
   async createPerformance(
     data: Omit<Performance, 'id' | 'created_at' | 'updated_at' | 'program'>,
     user?: User | null
   ): Promise<Performance> {
+    ensureAccountContext(user)
     verifyAccess(user, 'Performance', 'create', data.organization_id)
     const target = data.target ?? data.target_value ?? 100
     const realized = data.realized ?? data.realized_value ?? 0
@@ -2008,6 +2297,7 @@ export const dataService = {
     data: Partial<Performance>,
     user?: User | null
   ): Promise<Performance> {
+    ensureAccountContext(user)
     const perf = localPerformances.find((p) => p.id === id)
     if (!perf) throw new Error('Data capaian kinerja tidak ditemukan')
     verifyAccess(user, 'Performance', 'update', perf.organization_id)
@@ -2030,6 +2320,7 @@ export const dataService = {
   },
 
   async deletePerformance(id: string, user?: User | null): Promise<void> {
+    ensureAccountContext(user)
     const perf = localPerformances.find((p) => p.id === id)
     if (!perf) throw new Error('Data capaian kinerja tidak ditemukan')
     verifyAccess(user, 'Performance', 'delete', perf.organization_id)
@@ -2042,10 +2333,17 @@ export const dataService = {
   // --------------------------------------------------------------------------
   // 9. KEUANGAN & TRANSAKSI (Anggaran & Realisasi)
   // --------------------------------------------------------------------------
-  async getBudgets(organizationId: string, programId?: string, user?: User | null): Promise<Budget[]> {
+  async getBudgets(
+    scope: OrganizationScopeInput,
+    programId?: string,
+    user?: User | null
+  ): Promise<Budget[]> {
+    ensureAccountContext(user)
     await delay(80)
-    verifyAccess(user, 'Finance', 'viewAny', organizationId)
-    let filtered = localBudgets.filter((b) => b.organization_id === organizationId)
+    const { organizationId, mode, targetIds } = resolveOrganizationScope(scope, localOrganizations)
+    verifyAccess(user, 'Finance', 'viewAny', organizationId, mode)
+    const targetSet = new Set(targetIds)
+    let filtered = localBudgets.filter((b) => targetSet.has(b.organization_id))
     if (programId) {
       filtered = filtered.filter((b) => b.program_id === programId)
     }
@@ -2060,6 +2358,7 @@ export const dataService = {
     data: Omit<Budget, 'id' | 'created_at' | 'updated_at' | 'program' | 'transactions'>,
     user?: User | null
   ): Promise<Budget> {
+    ensureAccountContext(user)
     verifyAccess(user, 'Finance', 'create', data.organization_id)
     await delay(100)
     const newBudget: Budget = {
@@ -2079,6 +2378,7 @@ export const dataService = {
     data: Partial<Budget>,
     user?: User | null
   ): Promise<Budget> {
+    ensureAccountContext(user)
     const b = localBudgets.find((item) => item.id === id)
     if (!b) throw new Error('Data anggaran tidak ditemukan')
     verifyAccess(user, 'Finance', 'update', b.organization_id)
@@ -2095,10 +2395,28 @@ export const dataService = {
     return localBudgets[index]
   },
 
-  async getTransactions(organizationId: string, budgetId?: string, user?: User | null): Promise<Transaction[]> {
+  async deleteBudget(id: string, user?: User | null): Promise<void> {
+    ensureAccountContext(user)
+    const b = localBudgets.find((item) => item.id === id)
+    if (!b) throw new Error('Data anggaran tidak ditemukan')
+    verifyAccess(user, 'Finance', 'delete', b.organization_id)
+    await delay(100)
+    localBudgets = localBudgets.filter((item) => item.id !== id)
+    setStorage('budgets', localBudgets)
+    logAudit(user, 'delete', 'Finance', id, b.organization_id, b as unknown as Record<string, unknown>, undefined)
+  },
+
+  async getTransactions(
+    scope: OrganizationScopeInput,
+    budgetId?: string,
+    user?: User | null
+  ): Promise<Transaction[]> {
+    ensureAccountContext(user)
     await delay(80)
-    verifyAccess(user, 'Finance', 'viewAny', organizationId)
-    let filtered = localTransactions.filter((t) => t.organization_id === organizationId)
+    const { organizationId, mode, targetIds } = resolveOrganizationScope(scope, localOrganizations)
+    verifyAccess(user, 'Finance', 'viewAny', organizationId, mode)
+    const targetSet = new Set(targetIds)
+    let filtered = localTransactions.filter((t) => targetSet.has(t.organization_id))
     if (budgetId) {
       filtered = filtered.filter((t) => t.budget_id === budgetId)
     }
@@ -2113,6 +2431,7 @@ export const dataService = {
     data: Omit<Transaction, 'id' | 'created_at' | 'budget' | 'recorder'>,
     user?: User | null
   ): Promise<Transaction> {
+    ensureAccountContext(user)
     verifyAccess(user, 'Finance', 'create', data.organization_id)
     await delay(100)
     const newTx: Transaction = {
@@ -2158,6 +2477,7 @@ export const dataService = {
   },
 
   async deleteTransaction(id: string, user?: User | null): Promise<void> {
+    ensureAccountContext(user)
     const tx = localTransactions.find((t) => t.id === id)
     if (!tx) throw new Error('Transaksi tidak ditemukan')
     verifyAccess(user, 'Finance', 'delete', tx.organization_id)
@@ -2200,10 +2520,17 @@ export const dataService = {
   // --------------------------------------------------------------------------
   // 10. LAPORAN & EVALUASI (Verifikasi Ketua)
   // --------------------------------------------------------------------------
-  async getReports(organizationId: string, programId?: string, user?: User | null): Promise<Report[]> {
+  async getReports(
+    scope: OrganizationScopeInput,
+    programId?: string,
+    user?: User | null
+  ): Promise<Report[]> {
+    ensureAccountContext(user)
     await delay(80)
-    verifyAccess(user, 'Report', 'viewAny', organizationId)
-    let filtered = localReports.filter((r) => r.organization_id === organizationId)
+    const { organizationId, mode, targetIds } = resolveOrganizationScope(scope, localOrganizations)
+    verifyAccess(user, 'Report', 'viewAny', organizationId, mode)
+    const targetSet = new Set(targetIds)
+    let filtered = localReports.filter((r) => targetSet.has(r.organization_id))
     if (programId) {
       filtered = filtered.filter((r) => r.program_id === programId)
     }
@@ -2216,6 +2543,7 @@ export const dataService = {
   },
 
   async getReportById(id: string, user?: User | null): Promise<Report | null> {
+    ensureAccountContext(user)
     await delay(80)
     const report = localReports.find((r) => r.id === id)
     if (!report) return null
@@ -2232,6 +2560,7 @@ export const dataService = {
     data: Omit<Report, 'id' | 'created_at' | 'program' | 'author' | 'reviewer'>,
     user?: User | null
   ): Promise<Report> {
+    ensureAccountContext(user)
     verifyAccess(user, 'Report', 'create', data.organization_id)
     await delay(100)
     const newReport: Report = {
@@ -2274,6 +2603,7 @@ export const dataService = {
     data: Partial<Report>,
     user?: User | null
   ): Promise<Report> {
+    ensureAccountContext(user)
     const report = localReports.find((r) => r.id === id)
     if (!report) throw new Error('Laporan tidak ditemukan')
     verifyAccess(user, 'Report', 'update', report.organization_id)
@@ -2292,6 +2622,7 @@ export const dataService = {
     reviewNotes?: string,
     user?: User | null
   ): Promise<Report> {
+    ensureAccountContext(user)
     const report = localReports.find((r) => r.id === id)
     if (!report) throw new Error('Laporan tidak ditemukan')
     verifyAccess(user, 'Report', 'update', report.organization_id)
@@ -2343,13 +2674,31 @@ export const dataService = {
     return localReports[index]
   },
 
+  async deleteReport(id: string, user?: User | null): Promise<void> {
+    ensureAccountContext(user)
+    const report = localReports.find((r) => r.id === id)
+    if (!report) throw new Error('Laporan tidak ditemukan')
+    verifyAccess(user, 'Report', 'delete', report.organization_id)
+    await delay(100)
+    localReports = localReports.filter((r) => r.id !== id)
+    setStorage('reports', localReports)
+    logAudit(user, 'delete', 'Report', id, report.organization_id, report as unknown as Record<string, unknown>, undefined)
+  },
+
   // --------------------------------------------------------------------------
   // 11. TINDAK LANJUT & TUGAS (Task Execution)
   // --------------------------------------------------------------------------
-  async getTasks(organizationId: string, programId?: string, user?: User | null): Promise<Task[]> {
+  async getTasks(
+    scope: OrganizationScopeInput,
+    programId?: string,
+    user?: User | null
+  ): Promise<Task[]> {
+    ensureAccountContext(user)
     await delay(80)
-    verifyAccess(user, 'Task', 'viewAny', organizationId)
-    let filtered = localTasks.filter((t) => t.organization_id === organizationId)
+    const { organizationId, mode, targetIds } = resolveOrganizationScope(scope, localOrganizations)
+    verifyAccess(user, 'Task', 'viewAny', organizationId, mode)
+    const targetSet = new Set(targetIds)
+    let filtered = localTasks.filter((t) => targetSet.has(t.organization_id))
     if (programId) {
       filtered = filtered.filter((t) => t.program_id === programId)
     }
@@ -2358,14 +2707,46 @@ export const dataService = {
       program: localPrograms.find((p) => p.id === t.program_id),
       agenda: t.agenda_id ? localAgendas.find((a) => a.id === t.agenda_id) : undefined,
       assignee: t.assigned_to ? localUsers.find((u) => u.id === t.assigned_to) : undefined,
+      assigned_to_organization: t.assigned_to_organization_id
+        ? localOrganizations.find((o) => o.id === t.assigned_to_organization_id) || null
+        : null,
     }))
   },
 
+  async getTaskById(id: string, user?: User | null): Promise<Task | null> {
+    ensureAccountContext(user)
+    await delay(80)
+    const task = localTasks.find((t) => t.id === id)
+    if (!task) return null
+    verifyAccess(user, 'Task', 'view', task.organization_id)
+    return {
+      ...task,
+      program: localPrograms.find((p) => p.id === task.program_id),
+      agenda: task.agenda_id ? localAgendas.find((a) => a.id === task.agenda_id) : undefined,
+      assignee: task.assigned_to ? localUsers.find((u) => u.id === task.assigned_to) : undefined,
+      assigned_to_organization: task.assigned_to_organization_id
+        ? localOrganizations.find((o) => o.id === task.assigned_to_organization_id) || null
+        : null,
+    }
+  },
+
   async createTask(
-    data: Omit<Task, 'id' | 'created_at' | 'program' | 'agenda' | 'assignee'>,
+    data: Omit<Task, 'id' | 'created_at' | 'program' | 'agenda' | 'assignee' | 'assigned_to_organization'>,
     user?: User | null
   ): Promise<Task> {
+    ensureAccountContext(user)
     verifyAccess(user, 'Task', 'create', data.organization_id)
+
+    // Stage 6: Enforce downward-control assignment authorization
+    if (data.assigned_to_organization_id) {
+      assertCanAssignToOrganization(
+        data.organization_id,
+        data.assigned_to_organization_id,
+        localOrganizations,
+        user
+      )
+    }
+
     await delay(100)
     const newTask: Task = {
       ...data,
@@ -2383,15 +2764,44 @@ export const dataService = {
     data: Partial<Task>,
     user?: User | null
   ): Promise<Task> {
+    ensureAccountContext(user)
     const task = localTasks.find((t) => t.id === id)
     if (!task) throw new Error('Tugas tidak ditemukan')
     verifyAccess(user, 'Task', 'update', task.organization_id)
+
+    // Stage 6: Enforce downward-control assignment authorization on change
+    if ('assigned_to_organization_id' in data) {
+      const targetId = data.assigned_to_organization_id
+      if (targetId) {
+        assertCanAssignToOrganization(
+          task.organization_id,
+          targetId,
+          localOrganizations,
+          user
+        )
+      }
+      // Clearing assignment (null/undefined) is always allowed
+    }
+
     await delay(100)
     const index = localTasks.findIndex((t) => t.id === id)
     const oldVal = { ...localTasks[index] }
     localTasks[index] = { ...localTasks[index], ...data }
     setStorage('tasks', localTasks)
-    logAudit(user, 'update', 'Task', id, task.organization_id, oldVal as unknown as Record<string, unknown>, localTasks[index] as unknown as Record<string, unknown>)
+
+    // Audit assignment change separately for traceability
+    const assignmentChanged = 'assigned_to_organization_id' in data &&
+      data.assigned_to_organization_id !== oldVal.assigned_to_organization_id
+    if (assignmentChanged) {
+      logAudit(
+        user, 'update', 'Task', id, task.organization_id,
+        { assigned_to_organization_id: oldVal.assigned_to_organization_id },
+        { assigned_to_organization_id: data.assigned_to_organization_id }
+      )
+    } else {
+      logAudit(user, 'update', 'Task', id, task.organization_id, oldVal as unknown as Record<string, unknown>, localTasks[index] as unknown as Record<string, unknown>)
+    }
+
     return localTasks[index]
   },
 
@@ -2400,6 +2810,7 @@ export const dataService = {
     nextStatus: TaskStatus,
     user?: User | null
   ): Promise<Task> {
+    ensureAccountContext(user)
     const task = localTasks.find((t) => t.id === id)
     if (!task) throw new Error('Tugas tidak ditemukan')
     verifyAccess(user, 'Task', 'update', task.organization_id)
@@ -2425,6 +2836,7 @@ export const dataService = {
   },
 
   async deleteTask(id: string, user?: User | null): Promise<void> {
+    ensureAccountContext(user)
     const task = localTasks.find((t) => t.id === id)
     if (!task) throw new Error('Tugas tidak ditemukan')
     verifyAccess(user, 'Task', 'delete', task.organization_id)
@@ -2438,6 +2850,7 @@ export const dataService = {
   // 12. NOTIFIKASI & AUDIT LOG
   // --------------------------------------------------------------------------
   async getNotifications(userId: string, organizationId?: string): Promise<Notification[]> {
+    ensureAccountContext()
     await delay(60)
     let filtered = localNotifications.filter((n) => n.user_id === userId)
     if (organizationId) {
@@ -2447,6 +2860,7 @@ export const dataService = {
   },
 
   async markNotificationAsRead(id: string): Promise<void> {
+    ensureAccountContext()
     await delay(40)
     const index = localNotifications.findIndex((n) => n.id === id)
     if (index !== -1) {
@@ -2456,6 +2870,7 @@ export const dataService = {
   },
 
   async getAuditLogs(organizationId?: string, user?: User | null): Promise<AuditLog[]> {
+    ensureAccountContext(user)
     await delay(80)
     verifyAccess(user, 'Audit', 'viewAny', organizationId)
     let logs = [...localAuditLogs]
@@ -2466,6 +2881,7 @@ export const dataService = {
   },
 
   async deleteAuditLog(id: string, organizationId?: string, user?: User | null): Promise<boolean> {
+    ensureAccountContext(user)
     await delay(60)
     verifyAccess(user, 'Audit', 'delete', organizationId)
     const target = localAuditLogs.find((l) => l.id === id)
@@ -2476,6 +2892,7 @@ export const dataService = {
   },
 
   async deleteAuditLogs(ids: string[], organizationId?: string, user?: User | null): Promise<boolean> {
+    ensureAccountContext(user)
     await delay(80)
     verifyAccess(user, 'Audit', 'deleteAny', organizationId)
     const idSet = new Set(ids)
@@ -2485,6 +2902,7 @@ export const dataService = {
   },
 
   async clearAuditLogs(organizationId?: string, user?: User | null): Promise<boolean> {
+    ensureAccountContext(user)
     await delay(100)
     verifyAccess(user, 'Audit', 'forceDeleteAny', organizationId)
     if (organizationId && (!user || (!user.is_superadmin && user.role !== 'superadmin'))) {
@@ -2496,18 +2914,20 @@ export const dataService = {
     return true
   },
 
-
   // --------------------------------------------------------------------------
-  // 13. ECOSYSTEM STATS & METRICS (Dashboard Ringkasan Operasional)
+  // 13. ECOSYSTEM STATS & METRICS (Dashboard Ringkasan Operasional & Roll-up)
   // --------------------------------------------------------------------------
-  async getEcosystemStats(organizationId: string, user?: User | null) {
+  async getEcosystemStats(scope: OrganizationScopeInput, user?: User | null) {
+    ensureAccountContext(user)
     await delay(80)
-    verifyAccess(user, 'Program', 'viewAny', organizationId)
-    const orgPrograms = localPrograms.filter((p) => p.organization_id === organizationId)
-    const orgAgendas = localAgendas.filter((a) => a.organization_id === organizationId)
-    const orgReports = localReports.filter((r) => r.organization_id === organizationId)
-    const orgTasks = localTasks.filter((t) => t.organization_id === organizationId)
-    const orgBudgets = localBudgets.filter((b) => b.organization_id === organizationId)
+    const { organizationId, mode, targetIds } = resolveOrganizationScope(scope, localOrganizations)
+    verifyAccess(user, 'Program', 'viewAny', organizationId, mode)
+    const targetSet = new Set(targetIds)
+    const orgPrograms = localPrograms.filter((p) => targetSet.has(p.organization_id))
+    const orgAgendas = localAgendas.filter((a) => targetSet.has(a.organization_id))
+    const orgReports = localReports.filter((r) => targetSet.has(r.organization_id))
+    const orgTasks = localTasks.filter((t) => targetSet.has(t.organization_id))
+    const orgBudgets = localBudgets.filter((b) => targetSet.has(b.organization_id))
 
     const totalBudget = orgBudgets.reduce((sum, b) => sum + (b.allocated_amount || b.amount_allocated || b.planned_amount || 0), 0)
     const realizedBudget = orgBudgets.reduce((sum, b) => sum + (b.realized_amount || b.amount_spent || 0), 0)
@@ -2528,6 +2948,40 @@ export const dataService = {
       totalBudget,
       realizedBudget,
       absorptionRate,
+      scopeMode: mode,
+      resolvedOrganizationIds: targetIds,
     }
+  },
+
+  // --------------------------------------------------------------------------
+  // 14. HIERARCHY RESOLVER HELPERS
+  // --------------------------------------------------------------------------
+  getParentOrganization(id: string): Organization | null {
+    return getParentOrganization(id, localOrganizations)
+  },
+  getChildrenOrganizations(id: string, includeInactive = false): Organization[] {
+    return getChildrenOrganizations(id, localOrganizations, includeInactive)
+  },
+  getDescendantOrganizationIds(id: string, includeInactive = false): string[] {
+    return getDescendantOrganizationIds(id, localOrganizations, includeInactive)
+  },
+  getAncestorOrganizationIds(id: string): string[] {
+    return getAncestorOrganizationIds(id, localOrganizations)
+  },
+  isAncestor(ancestorId: string, descendantId: string): boolean {
+    return isAncestor(ancestorId, descendantId, localOrganizations)
+  },
+  isDescendant(descendantId: string, ancestorId: string): boolean {
+    return isDescendant(descendantId, ancestorId, localOrganizations)
+  },
+  getOrganizationTree(rootId?: string | null): OrganizationTreeNode[] {
+    return getOrganizationTree(rootId, localOrganizations)
+  },
+  resolveOrganizationScope(scope: OrganizationScopeInput): {
+    organizationId: string
+    mode: OrganizationScopeMode
+    targetIds: string[]
+  } {
+    return resolveOrganizationScope(scope, localOrganizations)
   },
 }

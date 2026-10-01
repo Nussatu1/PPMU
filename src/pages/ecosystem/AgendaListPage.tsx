@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Breadcrumb } from '@/components/layout/Breadcrumb'
 import { PageContainer } from '@/components/layout/PageContainer'
 import { Button } from '@/components/ui/Button'
 import { DataTable, type ColumnDef } from '@/components/ui/Table'
@@ -16,11 +15,19 @@ import {
   HeroPlus,
   HeroMapPin,
   HeroClock,
+  HeroPencilSquare,
+  HeroTrash,
+  HeroCheck,
 } from '@/components/icons/HeroIcons'
+import { MobileCard } from '@/components/ui/MobileCard'
+import {
+  OrganizationScopeBadge,
+  OrganizationScopeSwitcher,
+} from '@/components/organization'
 
 export const AgendaListPage: React.FC = () => {
   const navigate = useNavigate()
-  const { user, currentOrganization } = useAuth()
+  const { user, currentOrganization, currentScopeMode } = useAuth()
   const { success, error } = useToast()
   const { confirm } = useConfirm()
 
@@ -33,7 +40,11 @@ export const AgendaListPage: React.FC = () => {
     if (!orgId) return
     setIsLoading(true)
     try {
-      const agds = await dataService.getAgendas(orgId, undefined, user)
+      const agds = await dataService.getAgendas(
+        { organizationId: orgId, mode: currentScopeMode },
+        undefined,
+        user
+      )
       setAgendas(agds)
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Gagal memuat agenda'
@@ -41,7 +52,7 @@ export const AgendaListPage: React.FC = () => {
     } finally {
       setIsLoading(false)
     }
-  }, [orgId, user, error])
+  }, [orgId, currentScopeMode, user, error])
 
   useEffect(() => {
     loadData()
@@ -94,6 +105,7 @@ export const AgendaListPage: React.FC = () => {
       key: 'title',
       label: 'Nama Agenda & Waktu',
       sortable: true,
+      mobilePriority: 'primary',
       render: (a) => (
         <div className="flex items-start gap-3">
           <div className="p-2 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5">
@@ -120,10 +132,11 @@ export const AgendaListPage: React.FC = () => {
     {
       key: 'program_id',
       label: 'Induk Program & Seksi',
+      mobilePriority: 'secondary',
       render: (a) => (
         <div>
           <span className="font-semibold text-xs text-fg">{a.program?.title || 'Program Umum'}</span>
-          <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-0.5 font-medium">
+          <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5 font-medium">
             {a.section?.name || '-'}
           </p>
         </div>
@@ -133,6 +146,7 @@ export const AgendaListPage: React.FC = () => {
       key: 'budget_estimated',
       label: 'Estimasi Biaya',
       sortable: true,
+      mobilePriority: 'secondary',
       render: (a) => (
         <span className="text-xs font-semibold text-fg">
           {formatCurrency(a.budget_estimated || 0)}
@@ -143,11 +157,13 @@ export const AgendaListPage: React.FC = () => {
       key: 'status',
       label: 'Status Pelaksanaan',
       sortable: true,
+      mobilePriority: 'status',
       render: (a) => getStatusBadge(a.status),
     },
     {
       key: 'id',
       label: 'Langkah Operasional',
+      mobilePriority: 'detail',
       render: (a) => (
         <div className="flex items-center gap-1.5">
           {a.status === 'planned' && (
@@ -200,34 +216,152 @@ export const AgendaListPage: React.FC = () => {
     },
   ]
 
+  // Render Kartu Mobile: Action-Driven Schedule Card
+  const renderAgendaCard = (agenda: Agenda) => {
+    let primaryActionNode: React.ReactNode = null
+    if (agenda.status === 'planned') {
+      primaryActionNode = (
+        <button
+          type="button"
+          onClick={() => handleTransition(agenda, 'approved')}
+          className="w-full min-h-[44px] px-4 py-2 text-sm font-semibold rounded-xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white transition-colors cursor-pointer flex items-center justify-center shadow-xs"
+        >
+          Setujui Agenda
+        </button>
+      )
+    } else if (agenda.status === 'approved') {
+      primaryActionNode = (
+        <button
+          type="button"
+          onClick={() => handleTransition(agenda, 'upcoming')}
+          className="w-full min-h-[44px] px-4 py-2 text-sm font-semibold rounded-xl bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white transition-colors cursor-pointer flex items-center justify-center shadow-xs"
+        >
+          Jadwalkan
+        </button>
+      )
+    } else if (agenda.status === 'upcoming') {
+      primaryActionNode = (
+        <button
+          type="button"
+          onClick={() => handleTransition(agenda, 'in_progress')}
+          className="w-full min-h-[44px] px-4 py-2 text-sm font-semibold rounded-xl bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white transition-colors cursor-pointer flex items-center justify-center shadow-xs"
+        >
+          Mulai Sesi
+        </button>
+      )
+    } else if (agenda.status === 'in_progress') {
+      primaryActionNode = (
+        <button
+          type="button"
+          onClick={() => handleTransition(agenda, 'completed')}
+          className="w-full min-h-[44px] px-4 py-2 text-sm font-semibold rounded-xl bg-emerald-700 hover:bg-emerald-800 active:bg-emerald-900 text-white transition-colors cursor-pointer flex items-center justify-center shadow-xs"
+        >
+          Tandai Selesai
+        </button>
+      )
+    } else if (agenda.status === 'completed') {
+      primaryActionNode = (
+        <button
+          type="button"
+          onClick={() => handleTransition(agenda, 'evaluated')}
+          className="w-full min-h-[44px] px-4 py-2 text-sm font-semibold rounded-xl bg-surface-muted hover:bg-surface border border-line text-fg transition-colors cursor-pointer flex items-center justify-center"
+        >
+          Evaluasi
+        </button>
+      )
+    } else if (agenda.status === 'evaluated') {
+      primaryActionNode = (
+        <div className="flex items-center justify-center min-h-[44px] text-xs font-semibold text-emerald-600 dark:text-emerald-400 gap-1.5">
+          <HeroCheck className="w-4 h-4" /> Tuntas Dievaluasi
+        </div>
+      )
+    }
+
+    const menuActions = [
+      {
+        label: 'Edit Agenda',
+        icon: <HeroPencilSquare className="w-4 h-4" />,
+        onClick: () => navigate(`/agendas/${agenda.id}/edit`),
+      },
+      {
+        label: 'Hapus Agenda',
+        icon: <HeroTrash className="w-4 h-4 text-red-500" />,
+        onClick: () => handleDelete(agenda),
+        danger: true,
+      },
+    ]
+
+    return (
+      <MobileCard
+        title={agenda.title}
+        subtitle={agenda.program?.title || 'Program Umum'}
+        status={getStatusBadge(agenda.status)}
+        meta={
+          <>
+            {/* Baris Meta 1: Waktu & Lokasi */}
+            <div className="flex items-center justify-between gap-2 text-xs">
+              <div className="flex items-center gap-1.5 text-fg">
+                <HeroClock className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                <span>
+                  {agenda.start_time
+                    ? new Date(agenda.start_time).toLocaleString('id-ID', {
+                        dateStyle: 'medium',
+                        timeStyle: 'short',
+                      })
+                    : 'Jadwal fleksibel'}
+                </span>
+              </div>
+              {agenda.location && (
+                <div className="flex items-center gap-1 text-fg-muted truncate max-w-[140px]">
+                  <HeroMapPin className="w-3.5 h-3.5 shrink-0" />
+                  <span className="truncate">{agenda.location}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Baris Meta 2: Seksi Pelaksana & Estimasi Anggaran */}
+            <div className="flex items-center justify-between gap-2 text-xs">
+              <span className="text-fg-muted truncate">
+                Seksi: <strong className="text-fg font-medium">{agenda.section?.name || '-'}</strong>
+              </span>
+              <span className="text-fg font-semibold shrink-0">
+                {formatCurrency(agenda.budget_estimated || 0)}
+              </span>
+            </div>
+          </>
+        }
+        primaryAction={primaryActionNode}
+        menuActions={menuActions}
+      />
+    )
+  }
+
   return (
     <PageContainer variant="full">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <Breadcrumb
-            items={[
-              { label: 'Organisasi', href: '/programs' },
-              { label: 'Agenda & Kegiatan' },
-            ]}
-          />
-          <h1 className="text-2xl font-bold tracking-tight text-fg mt-1 flex items-center gap-2.5">
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-fg flex items-center gap-2.5">
             <HeroCalendar className="w-7 h-7 text-amber-500" />
-            Agenda & Kegiatan Lapangan
+            Agenda Kegiatan
           </h1>
+          <OrganizationScopeBadge />
         </div>
 
-        <Button
-          variant="primary"
-          onClick={() => navigate('/agendas/create')}
-          className="shrink-0 self-start sm:self-auto"
-        >
-          <HeroPlus className="w-4 h-4 mr-2" />
-          Jadwalkan Kegiatan Baru
-        </Button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <OrganizationScopeSwitcher size="sm" />
+          <Button
+            variant="primary"
+            onClick={() => navigate('/agendas/create')}
+            className="shrink-0 self-start sm:self-auto"
+          >
+            <HeroPlus className="w-4 h-4 mr-2" />
+            Tambah Agenda
+          </Button>
+        </div>
       </div>
 
-      {/* Data Table */}
+      {/* Data Table & Mobile Cards */}
       <DataTable
         columns={columns}
         data={agendas}
@@ -236,6 +370,7 @@ export const AgendaListPage: React.FC = () => {
         searchKey="title"
         onEdit={(agenda) => navigate(`/agendas/${agenda.id}/edit`)}
         onDelete={handleDelete}
+        renderCard={renderAgendaCard}
       />
     </PageContainer>
   )

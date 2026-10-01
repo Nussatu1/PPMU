@@ -42,3 +42,26 @@ export const TableSkeleton: React.FC<{ rows?: number; columns?: number }> = ({
     </div>
   )
 }
+
+export const CardSkeleton: React.FC<{ count?: number }> = ({ count = 3 }) => {
+  return (
+    <div className="w-full space-y-3 p-3">
+      {Array.from({ length: count }).map((_, i) => (
+        <div key={i} className="p-4 rounded-xl border border-line bg-surface space-y-3">
+          <div className="flex items-start justify-between gap-3">
+            <div className="space-y-1.5 flex-1">
+              <Skeleton className="h-5 w-3/4 rounded" />
+              <Skeleton className="h-3.5 w-1/2 rounded" />
+            </div>
+            <Skeleton className="h-6 w-16 rounded-md shrink-0" />
+          </div>
+          <div className="pt-2 border-t border-line/60 space-y-1.5">
+            <Skeleton className="h-3.5 w-2/3 rounded" />
+            <Skeleton className="h-3.5 w-1/3 rounded" />
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+

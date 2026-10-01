@@ -12,7 +12,9 @@ import { DatePicker } from '@/components/ui/DatePicker'
 import { useToast } from '@/context/ToastContext'
 import { useAuth } from '@/context/AuthContext'
 import { dataService } from '@/lib/dataService'
+import { UnitAssignmentSelector } from '@/components/organization/UnitAssignmentSelector'
 import type { Task, Program, Personnel, Report } from '@/types/database'
+
 import {
   HeroCheckCircle,
   HeroArrowLeft,
@@ -20,7 +22,9 @@ import {
   HeroPlus,
   HeroClock,
   HeroDocumentText,
+  HeroUserGroup,
 } from '@/components/icons/HeroIcons'
+
 
 type FormData = {
   title: string
@@ -31,7 +35,9 @@ type FormData = {
   priority: Task['priority']
   due_date: string
   result: string
+  assigned_to_organization_id: string | null
 }
+
 
 const emptyForm = (progs: Program[]): FormData => ({
   title: '',
@@ -42,7 +48,9 @@ const emptyForm = (progs: Program[]): FormData => ({
   priority: 'medium',
   due_date: new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0],
   result: '',
+  assigned_to_organization_id: null,
 })
+
 
 export const TaskCreatePage: React.FC = () => {
   const navigate = useNavigate()
@@ -131,7 +139,7 @@ export const TaskCreatePage: React.FC = () => {
               { label: 'Terbitkan Tugas' },
             ]}
           />
-          <h1 className="text-2xl font-bold tracking-tight text-fg">
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-fg">
             Terbitkan Tugas Tindak Lanjut Baru
           </h1>
           <p className="text-sm text-fg-muted">
@@ -142,6 +150,7 @@ export const TaskCreatePage: React.FC = () => {
           variant="secondary"
           icon={<HeroArrowLeft className="w-4 h-4" />}
           onClick={() => navigate('/tasks')}
+          className="hidden sm:inline-flex"
         >
           Kembali
         </Button>
@@ -229,6 +238,21 @@ export const TaskCreatePage: React.FC = () => {
                   onChange={(val) => set('due_date', val)}
                 />
               </div>
+            </Section>
+
+            {/* Penugasan Unit (Stage 6) */}
+            <Section
+              title="Penugasan Unit"
+              description="Delegasikan tugas ini ke unit organisasi turunan yang bertanggung jawab atas penyelesaiannya."
+              icon={<HeroUserGroup className="w-5 h-5" />}
+              columns={1}
+              className="lg:col-span-6"
+            >
+              <UnitAssignmentSelector
+                value={formData.assigned_to_organization_id}
+                onChange={(orgId) => set('assigned_to_organization_id', orgId as unknown as string)}
+                helperText="Hanya unit turunan yang sah yang dapat dipilih. Penugasan bersifat opsional."
+              />
             </Section>
 
             {/* Instruksi & Kriteria Keberhasilan */}

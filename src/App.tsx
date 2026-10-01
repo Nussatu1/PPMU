@@ -24,6 +24,7 @@ const lazyNamed = <T extends Record<string, any>, K extends keyof T>(
 // Lazy Pages
 const LoginPage = lazyNamed(() => import('@/pages/auth/LoginPage'), 'LoginPage')
 const DashboardPage = lazyNamed(() => import('@/pages/dashboard/DashboardPage'), 'DashboardPage')
+const MobileMenuPage = lazyNamed(() => import('@/pages/dashboard/MobileMenuPage'), 'MobileMenuPage')
 
 // Superadmin Module
 const OrganizationListPage = lazyNamed(() => import('@/pages/superadmin/OrganizationListPage'), 'OrganizationListPage')
@@ -46,6 +47,7 @@ const PerformanceListPage = lazyNamed(() => import('@/pages/ecosystem/Performanc
 const PerformanceCreatePage = lazyNamed(() => import('@/pages/ecosystem/PerformanceCreatePage'), 'PerformanceCreatePage')
 const FinanceListPage = lazyNamed(() => import('@/pages/ecosystem/FinanceListPage'), 'FinanceListPage')
 const FinanceCreatePage = lazyNamed(() => import('@/pages/ecosystem/FinanceCreatePage'), 'FinanceCreatePage')
+const FinanceDetailPage = lazyNamed(() => import('@/pages/ecosystem/FinanceDetailPage'), 'FinanceDetailPage')
 const ReportListPage = lazyNamed(() => import('@/pages/ecosystem/ReportListPage'), 'ReportListPage')
 const ReportCreatePage = lazyNamed(() => import('@/pages/ecosystem/ReportCreatePage'), 'ReportCreatePage')
 const TaskListPage = lazyNamed(() => import('@/pages/ecosystem/TaskListPage'), 'TaskListPage')
@@ -67,6 +69,7 @@ export const App: React.FC = () => {
                     {/* Protected Admin Routes */}
                     <Route path="/" element={<AdminLayout />}>
                       <Route index element={<DashboardPage />} />
+                      <Route path="menu" element={<MobileMenuPage />} />
 
                       {/* Superadmin Global Routes */}
                       <Route path="organizations" element={<OrganizationListPage />} />
@@ -90,6 +93,7 @@ export const App: React.FC = () => {
                       <Route path="performance/create" element={<PerformanceCreatePage />} />
                       <Route path="finance" element={<FinanceListPage />} />
                       <Route path="finance/create" element={<FinanceCreatePage />} />
+                      <Route path="finance/:id" element={<FinanceDetailPage />} />
                       <Route path="reports" element={<ReportListPage />} />
                       <Route path="reports/create" element={<ReportCreatePage />} />
                       <Route path="tasks" element={<TaskListPage />} />

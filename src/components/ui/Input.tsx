@@ -46,7 +46,7 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
         {label && (
           <label
             htmlFor={inputId}
-            className="block text-xs font-semibold text-fg"
+            className="block text-sm font-semibold text-fg"
           >
             {label}
             {required && <span className="text-red-600 dark:text-red-400 ml-0.5 font-bold">*</span>}
@@ -54,7 +54,7 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
         )}
         <div
           className={cn(
-            'flex items-center rounded-lg bg-input-bg shadow-sm ring-1 transition duration-75 relative',
+            'flex items-center rounded-lg bg-input-bg shadow-sm ring-1 transition duration-75 relative min-h-[44px] sm:min-h-0',
             error
               ? 'ring-red-600 dark:ring-red-500 focus-within:ring-2 focus-within:ring-red-600 dark:focus-within:ring-red-500'
               : 'ring-line-strong focus-within:ring-2 focus-within:ring-primary-600 dark:focus-within:ring-primary-500',
@@ -62,7 +62,7 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
           )}
         >
           {prefixIcon && (
-            <div className="pointer-events-none pl-3 flex items-center text-fg-subtle shrink-0">
+            <div className="pointer-events-none pl-3 flex items-center text-fg-muted shrink-0">
               {prefixIcon}
             </div>
           )}
@@ -75,7 +75,7 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
             onChange={onChange}
             disabled={disabled}
             className={cn(
-              'w-full bg-transparent px-3 py-1.5 text-base text-fg outline-none placeholder:text-fg-subtle sm:text-sm sm:leading-6',
+              'w-full bg-transparent px-3 py-1.5 min-h-[44px] sm:min-h-0 text-base text-fg outline-none placeholder:text-fg-subtle sm:text-sm sm:leading-6',
               disabled && 'cursor-not-allowed',
               (suffixIcon || isPassword || (isSearch && value && onClear)) && 'pr-9',
               className
@@ -88,7 +88,7 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
             <button
               type="button"
               onClick={() => setShowPassword(!showPassword)}
-              className="absolute inset-y-0 right-0 pr-3 flex items-center text-fg-subtle hover:text-fg-muted cursor-pointer focus:outline-none"
+              className="absolute inset-y-0 right-0 min-w-[44px] flex items-center justify-center text-fg-muted hover:text-fg cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 rounded"
               aria-label={showPassword ? 'Sembunyikan sandi' : 'Tampilkan sandi'}
               tabIndex={-1}
             >
@@ -105,7 +105,7 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
             <button
               type="button"
               onClick={onClear}
-              className="absolute inset-y-0 right-0 pr-3 flex items-center text-fg-subtle hover:text-fg-muted cursor-pointer focus:outline-none"
+              className="absolute inset-y-0 right-0 min-w-[44px] flex items-center justify-center text-fg-muted hover:text-fg cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 rounded"
               aria-label="Hapus pencarian"
               tabIndex={-1}
             >
@@ -114,7 +114,7 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
           )}
 
           {suffixIcon && !isPassword && !isSearch && (
-            <div className="pointer-events-none pr-3 flex items-center text-fg-subtle shrink-0">
+            <div className="pointer-events-none pr-3 flex items-center text-fg-muted shrink-0">
               {suffixIcon}
             </div>
           )}

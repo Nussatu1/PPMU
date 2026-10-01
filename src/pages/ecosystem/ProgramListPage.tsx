@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Breadcrumb } from '@/components/layout/Breadcrumb'
 import { PageContainer } from '@/components/layout/PageContainer'
 import { Button } from '@/components/ui/Button'
 import { Tabs, type TabItem } from '@/components/ui/Tabs'
@@ -18,11 +17,18 @@ import {
   HeroArrowRight,
   HeroCheck,
   HeroUser,
+  HeroPencilSquare,
+  HeroTrash,
 } from '@/components/icons/HeroIcons'
+import { MobileCard } from '@/components/ui/MobileCard'
+import {
+  OrganizationScopeBadge,
+  OrganizationScopeSwitcher,
+} from '@/components/organization'
 
 export const ProgramListPage: React.FC = () => {
   const navigate = useNavigate()
-  const { user, currentOrganization } = useAuth()
+  const { user, currentOrganization, currentScopeMode } = useAuth()
   const { success, error } = useToast()
   const { confirm } = useConfirm()
 
@@ -40,7 +46,7 @@ export const ProgramListPage: React.FC = () => {
     setIsLoading(true)
     try {
       const [progs, prss] = await Promise.all([
-        dataService.getPrograms(orgId, user),
+        dataService.getPrograms({ organizationId: orgId, mode: currentScopeMode }, user),
         dataService.getPersonnels(orgId, undefined, user),
       ])
       setPrograms(progs)
@@ -51,7 +57,7 @@ export const ProgramListPage: React.FC = () => {
     } finally {
       setIsLoading(false)
     }
-  }, [orgId, user, error])
+  }, [orgId, currentScopeMode, user, error])
 
   useEffect(() => {
     loadData()
@@ -118,6 +124,7 @@ export const ProgramListPage: React.FC = () => {
       key: 'title',
       label: 'Program Kerja & Divisi',
       sortable: true,
+      mobilePriority: 'primary',
       render: (prog) => (
         <div className="flex items-start gap-3">
           <div className="p-2 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5">
@@ -146,6 +153,7 @@ export const ProgramListPage: React.FC = () => {
       key: 'budget_allocated',
       label: 'Alokasi & Realisasi Anggaran',
       sortable: true,
+      mobilePriority: 'primary',
       render: (prog) => {
         const allocated = prog.budget_allocated || prog.budget_planned || 0
         const realized = prog.budget_realized || 0
@@ -156,7 +164,7 @@ export const ProgramListPage: React.FC = () => {
           <div className="w-48">
             <div className="flex items-center justify-between text-xs mb-1">
               <span className="font-semibold text-fg">{formatCurrency(realized)}</span>
-              <span className="text-fg-muted font-medium text-[11px]">{percent}%</span>
+              <span className="text-fg-muted font-medium text-xs">{percent}%</span>
             </div>
             <div className="w-full h-1.5 rounded-full bg-surface-muted overflow-hidden">
               <div
@@ -164,7 +172,7 @@ export const ProgramListPage: React.FC = () => {
                 style={{ width: `${Math.min(100, percent)}%` }}
               />
             </div>
-            <span className="text-[10px] text-fg-muted mt-0.5 block">
+            <span className="text-xs text-fg-muted mt-0.5 block">
               Pagu: {formatCurrency(allocated)}
             </span>
           </div>
@@ -174,16 +182,30 @@ export const ProgramListPage: React.FC = () => {
     {
       key: 'pic_personnel_id',
       label: 'PIC Struktur',
+      mobilePriority: 'secondary',
       render: (prog) => {
         const prs = personnels.find((p) => p.id === prog.pic_personnel_id) || prog.pic_personnel
-        if (!prs && !prog.pic_name) return <span className="text-xs text-fg-muted italic">Belum ditentukan</span>
         return (
-          <div className="flex items-center gap-1.5 text-xs text-fg">
-            <HeroUser className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-            <div>
-              <p className="font-semibold text-fg">{prs?.position || prog.pic_name}</p>
-              {prs?.name && <p className="text-[11px] text-fg-muted">{prs.name}</p>}
-            </div>
+          <div className="space-y-1">
+            {(prs || prog.pic_name) ? (
+              <div className="flex items-center gap-1.5 text-xs text-fg">
+                <HeroUser className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                <div>
+                  <p className="font-semibold text-fg">{prs?.position || prog.pic_name}</p>
+                  {prs?.name && <p className="text-xs text-fg-muted">{prs.name}</p>}
+                </div>
+              </div>
+            ) : (
+              <span className="text-xs text-fg-muted italic">Belum ditentukan</span>
+            )}
+            {prog.assigned_to_organization_id && (
+              <div className="flex items-center gap-1 text-[10px] font-medium text-blue-600 dark:text-blue-400">
+                <span className="shrink-0">↳</span>
+                <span className="truncate">
+                  {prog.assigned_to_organization?.name || prog.assigned_to_organization_id}
+                </span>
+              </div>
+            )}
           </div>
         )
       },
@@ -192,11 +214,13 @@ export const ProgramListPage: React.FC = () => {
       key: 'status',
       label: 'Status Siklus',
       sortable: true,
+      mobilePriority: 'status',
       render: (prog) => getStatusBadge(prog.status),
     },
     {
       key: 'id',
-      label: 'Tindakan Siklus Kerja',
+      label: 'Aksi',
+      mobilePriority: 'detail',
       render: (prog) => (
         <div className="flex items-center gap-1.5">
           {prog.status === 'draft' && (
@@ -242,41 +266,172 @@ export const ProgramListPage: React.FC = () => {
           )}
 
           {prog.status === 'completed' && (
-            <span className="text-[11px] font-semibold text-fg-muted">Tercapai</span>
+            <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+              Tercapai
+            </span>
           )}
         </div>
       ),
     },
   ]
 
+  // Render Kartu Mobile: Metric & Budget Card
+  const renderProgramCard = (prog: Program) => {
+    const allocated = prog.budget_allocated || prog.budget_planned || 0
+    const realized = prog.budget_realized || 0
+    const percent = allocated > 0 ? Math.round((realized / allocated) * 100) : 0
+    const prs = personnels.find((p) => p.id === prog.pic_personnel_id) || prog.pic_personnel
+
+    let primaryActionNode: React.ReactNode = null
+    if (prog.status === 'draft') {
+      primaryActionNode = (
+        <button
+          type="button"
+          onClick={() => handleTransitionStatus(prog, 'submitted')}
+          className="w-full min-h-[44px] px-4 py-2 text-sm font-semibold rounded-xl bg-primary-600 hover:bg-primary-700 active:bg-primary-800 text-white transition-colors cursor-pointer flex items-center justify-center gap-1.5 shadow-xs"
+        >
+          Ajukan Proposal <HeroArrowRight className="w-4 h-4" />
+        </button>
+      )
+    } else if (prog.status === 'submitted') {
+      primaryActionNode = (
+        <button
+          type="button"
+          onClick={() => handleTransitionStatus(prog, 'approved')}
+          className="w-full min-h-[44px] px-4 py-2 text-sm font-semibold rounded-xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white transition-colors cursor-pointer flex items-center justify-center gap-1.5 shadow-xs"
+        >
+          <HeroCheck className="w-4 h-4" /> Setujui Program
+        </button>
+      )
+    } else if (prog.status === 'approved') {
+      primaryActionNode = (
+        <button
+          type="button"
+          onClick={() => handleTransitionStatus(prog, 'active')}
+          className="w-full min-h-[44px] px-4 py-2 text-sm font-semibold rounded-xl bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white transition-colors cursor-pointer flex items-center justify-center shadow-xs"
+        >
+          Aktifkan Program
+        </button>
+      )
+    } else if (prog.status === 'active') {
+      primaryActionNode = (
+        <button
+          type="button"
+          onClick={() => handleTransitionStatus(prog, 'completed')}
+          className="w-full min-h-[44px] px-4 py-2 text-sm font-semibold rounded-xl bg-emerald-700 hover:bg-emerald-800 active:bg-emerald-900 text-white transition-colors cursor-pointer flex items-center justify-center shadow-xs"
+        >
+          Tandai Selesai
+        </button>
+      )
+    } else if (prog.status === 'completed') {
+      primaryActionNode = (
+        <div className="flex items-center justify-center min-h-[44px] text-xs font-semibold text-emerald-600 dark:text-emerald-400 gap-1.5">
+          <HeroCheck className="w-4 h-4" /> Tercapai
+        </div>
+      )
+    }
+
+    const menuActions = [
+      {
+        label: 'Edit Program',
+        icon: <HeroPencilSquare className="w-4 h-4" />,
+        onClick: () => navigate(`/programs/${prog.id}/edit`),
+      },
+      {
+        label: 'Hapus Program',
+        icon: <HeroTrash className="w-4 h-4 text-red-500" />,
+        onClick: () => handleDelete(prog),
+        danger: true,
+      },
+    ]
+
+    return (
+      <MobileCard
+        title={
+          <div className="flex items-center gap-2">
+            <span className="truncate">{prog.title}</span>
+            {prog.code && (
+              <span className="px-1.5 py-0.5 rounded font-mono text-[10px] bg-surface-muted text-fg-muted font-bold shrink-0">
+                {prog.code}
+              </span>
+            )}
+          </div>
+        }
+        subtitle={prog.section?.name || 'Seksi Terkait'}
+        status={getStatusBadge(prog.status)}
+        meta={
+          <>
+            {/* Baris Meta 1: Serapan Anggaran & 100% Responsive Progress Bar */}
+            <div className="space-y-1">
+              <div className="flex items-center justify-between text-xs font-medium">
+                <span className="text-fg">
+                  Realisasi: <strong>{formatCurrency(realized)}</strong>
+                </span>
+                <span className="text-amber-600 dark:text-amber-400 font-bold">{percent}%</span>
+              </div>
+              <div className="w-full h-2 rounded-full bg-surface-muted overflow-hidden">
+                <div
+                  className="h-full bg-amber-500 rounded-full transition-all duration-500"
+                  style={{ width: `${Math.min(100, percent)}%` }}
+                />
+              </div>
+              <div className="text-[11px] text-fg-muted text-right">
+                Pagu Alokasi: {formatCurrency(allocated)}
+              </div>
+            </div>
+
+            {/* Baris Meta 2: PIC & Target KPI */}
+            <div className="flex items-center justify-between text-xs text-fg-muted pt-1 gap-2">
+              <span className="truncate">
+                PIC: <strong className="text-fg font-medium">{prs?.position || prog.pic_name || 'Umum'}</strong>
+              </span>
+              {prog.target_kpi && (
+                <span className="truncate max-w-[150px] text-right font-medium text-fg">
+                  KPI: {prog.target_kpi}
+                </span>
+              )}
+            </div>
+
+            {/* Baris Meta 3: Unit Penugasan (Stage 6) */}
+            {prog.assigned_to_organization_id && (
+              <div className="flex items-center gap-1.5 text-[11px] font-medium text-blue-600 dark:text-blue-400 pt-0.5">
+                <span className="shrink-0">↳ Ditugaskan ke:</span>
+                <span className="truncate font-semibold">
+                  {prog.assigned_to_organization?.name || prog.assigned_to_organization_id}
+                </span>
+              </div>
+            )}
+          </>
+        }
+        primaryAction={primaryActionNode}
+        menuActions={menuActions}
+      />
+    )
+  }
+
   return (
     <PageContainer variant="full">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <Breadcrumb
-            items={[
-              { label: 'Organisasi', href: '/structures' },
-              { label: 'Program Kerja' },
-            ]}
-          />
-          <h1 className="text-2xl font-bold tracking-tight text-fg mt-1 flex items-center gap-2.5">
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-fg flex items-center gap-2.5">
             <HeroBriefcase className="w-6 h-6 text-amber-500" />
-            Program Kerja & Target Kinerja
+            Program Kerja
           </h1>
-          <p className="text-xs text-fg-muted mt-0.5">
-            Kelola siklus perencanaan, pengesahan pagu, dan monitoring ketercapaian program kerja.
-          </p>
+          <OrganizationScopeBadge />
         </div>
 
-        <Button
-          variant="primary"
-          icon={<HeroPlus className="w-4 h-4" />}
-          onClick={() => navigate('/programs/create')}
-          className="shrink-0 self-start sm:self-auto"
-        >
-          Rancang Program Baru
-        </Button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <OrganizationScopeSwitcher size="sm" />
+          <Button
+            variant="primary"
+            icon={<HeroPlus className="w-4 h-4" />}
+            onClick={() => navigate('/programs/create')}
+            className="shrink-0 self-start sm:self-auto"
+          >
+            Tambah Program
+          </Button>
+        </div>
       </div>
 
       {/* Filter Tabs */}
@@ -286,7 +441,7 @@ export const ProgramListPage: React.FC = () => {
         onChange={(id) => setFilterStatus(id as any)}
       />
 
-      {/* Table */}
+      {/* Table & Mobile Cards */}
       <DataTable
         columns={columns}
         data={filteredPrograms}
@@ -295,6 +450,7 @@ export const ProgramListPage: React.FC = () => {
         searchKey="title"
         onEdit={(prog) => navigate(`/programs/${prog.id}/edit`)}
         onDelete={handleDelete}
+        renderCard={renderProgramCard}
       />
     </PageContainer>
   )

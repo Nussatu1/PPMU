@@ -1,10 +1,14 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Breadcrumb } from '@/components/layout/Breadcrumb'
 import { PageContainer } from '@/components/layout/PageContainer'
 import { Button } from '@/components/ui/Button'
 import { DataTable, type ColumnDef } from '@/components/ui/Table'
 import { Badge } from '@/components/ui/Badge'
+import { MobileCard } from '@/components/ui/MobileCard'
+import {
+  OrganizationScopeBadge,
+  OrganizationScopeSwitcher,
+} from '@/components/organization'
 import { useToast } from '@/context/ToastContext'
 import { useAuth } from '@/context/AuthContext'
 import { dataService } from '@/lib/dataService'
@@ -27,7 +31,7 @@ const getAuthorName = (author?: Report['author']): string => {
 
 export const ReportListPage: React.FC = () => {
   const navigate = useNavigate()
-  const { user, currentOrganization } = useAuth()
+  const { user, currentOrganization, currentScopeMode } = useAuth()
   const { success, error } = useToast()
 
   const [reports, setReports] = useState<Report[]>([])
@@ -43,7 +47,11 @@ export const ReportListPage: React.FC = () => {
     if (!orgId) return
     setIsLoading(true)
     try {
-      const reps = await dataService.getReports(orgId, undefined, user)
+      const reps = await dataService.getReports(
+        { organizationId: orgId, mode: currentScopeMode },
+        undefined,
+        user
+      )
       setReports(reps)
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Gagal memuat laporan'
@@ -51,7 +59,7 @@ export const ReportListPage: React.FC = () => {
     } finally {
       setIsLoading(false)
     }
-  }, [orgId, user, error])
+  }, [orgId, currentScopeMode, user, error])
 
   useEffect(() => {
     loadData()
@@ -129,7 +137,7 @@ export const ReportListPage: React.FC = () => {
     },
     {
       key: 'budget_spent',
-      label: 'Realisasi Dana Dilaporkan',
+      label: 'Realisasi Dana',
       sortable: true,
       render: (r) => (
         <span className="font-semibold text-xs text-fg">
@@ -139,7 +147,7 @@ export const ReportListPage: React.FC = () => {
     },
     {
       key: 'status',
-      label: 'Status Peninjauan',
+      label: 'Status',
       sortable: true,
       render: (r) => (
         <div>
@@ -154,7 +162,7 @@ export const ReportListPage: React.FC = () => {
     },
     {
       key: 'id',
-      label: 'Verifikasi & Evaluasi',
+      label: 'Aksi',
       render: (r) => (
         <div className="flex items-center gap-1.5">
           {r.status === 'draft' && (
@@ -204,23 +212,21 @@ export const ReportListPage: React.FC = () => {
     <PageContainer variant="full">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <Breadcrumb
-            items={[
-              { label: 'Organisasi', href: '/programs' },
-              { label: 'Laporan & Evaluasi' },
-            ]}
-          />
-          <h1 className="text-2xl font-bold tracking-tight text-fg mt-1 flex items-center gap-2.5">
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-fg flex items-center gap-2.5">
             <HeroClipboardDocumentList className="w-7 h-7 text-amber-500" />
-            Laporan Kinerja & Verifikasi Pimpinan
+            Laporan Kinerja
           </h1>
+          <OrganizationScopeBadge />
         </div>
 
-        <Button variant="primary" onClick={() => navigate('/reports/create')} className="shrink-0 self-start sm:self-auto">
-          <HeroPlus className="w-4 h-4 mr-2" />
-          Susun Laporan Baru
-        </Button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <OrganizationScopeSwitcher size="sm" />
+          <Button variant="primary" onClick={() => navigate('/reports/create')} className="shrink-0 self-start sm:self-auto">
+            <HeroPlus className="w-4 h-4 mr-2" />
+            Buat Laporan
+          </Button>
+        </div>
       </div>
 
       {/* Table */}
@@ -230,6 +236,87 @@ export const ReportListPage: React.FC = () => {
         isLoading={isLoading}
         searchPlaceholder="Cari laporan..."
         searchKey="title"
+        renderCard={(r) => {
+          let primaryActionNode: React.ReactNode = null
+          if (r.status === 'draft') {
+            primaryActionNode = (
+              <button
+                type="button"
+                onClick={() => handleSubmitReport(r)}
+                className="w-full min-h-[44px] px-4 py-2 text-xs font-semibold rounded-lg bg-amber-500 hover:bg-amber-600 text-white transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                Ajukan <HeroArrowRight className="w-4 h-4" />
+              </button>
+            )
+          } else if (r.status === 'submitted') {
+            primaryActionNode = (
+              <button
+                type="button"
+                onClick={() => {
+                  setReviewingReport(r)
+                  setReviewNotes(r.review_notes || '')
+                }}
+                className="w-full min-h-[44px] px-4 py-2 text-xs font-semibold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <HeroCheck className="w-4 h-4" /> Verifikasi Laporan
+              </button>
+            )
+          } else if (r.status === 'revised') {
+            primaryActionNode = (
+              <button
+                type="button"
+                onClick={() => navigate('/reports/create')}
+                className="w-full min-h-[44px] px-4 py-2 text-xs font-semibold rounded-lg bg-amber-500/20 text-amber-900 dark:text-amber-300 hover:bg-amber-500/30 transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <HeroPencilSquare className="w-4 h-4" /> Perbaiki Laporan
+              </button>
+            )
+          } else if (r.status === 'approved') {
+            primaryActionNode = (
+              <div className="flex items-center justify-center min-h-[44px] text-xs font-semibold text-emerald-600 dark:text-emerald-400 gap-1.5">
+                <HeroCheck className="w-4 h-4" /> Terverifikasi Resmi
+              </div>
+            )
+          }
+
+          return (
+            <MobileCard
+              title={<span className="truncate">{r.title}</span>}
+              subtitle={
+                <span className="text-amber-600 dark:text-amber-400 font-medium">
+                  {r.program?.title || 'Program Umum'}
+                </span>
+              }
+              status={getStatusBadge(r.status)}
+              meta={
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-fg-muted">Realisasi Dana:</span>
+                    <span className="font-semibold text-fg">
+                      {formatCurrency(r.budget_spent || 0)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs text-fg-muted">
+                    <span>Penyusun: <strong className="text-fg font-medium">{getAuthorName(r.author)}</strong></span>
+                    <span>Periode: <strong className="text-fg font-medium">{r.period}</strong></span>
+                  </div>
+                  {r.reviewer && (
+                    <div className="text-[11px] text-fg-muted">
+                      Reviewer: <span className="text-fg font-medium">{r.reviewer.name}</span>
+                    </div>
+                  )}
+                  {r.review_notes && (
+                    <div className="mt-1.5 p-2 rounded-lg bg-surface-muted border border-line text-xs text-fg-muted">
+                      <span className="font-semibold text-fg">Catatan Evaluasi: </span>
+                      <span className="italic">"{r.review_notes}"</span>
+                    </div>
+                  )}
+                </div>
+              }
+              primaryAction={primaryActionNode}
+            />
+          )
+        }}
       />
 
       {reviewingReport && (

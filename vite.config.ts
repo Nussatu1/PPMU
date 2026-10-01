@@ -7,6 +7,10 @@ import path from 'path'
 // Pre-bundle optimized deps
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  server: {
+    host: true,
+    port: 5173,
+  },
   resolve: {
     alias: {
       '@': path.resolve(import.meta.dirname, './src'),

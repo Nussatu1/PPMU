@@ -171,7 +171,7 @@ export const LoginPage: React.FC = () => {
                 Email atau Username <span className="text-red-600 dark:text-red-400">*</span>
               </label>
               <div className="flex items-center rounded-lg bg-input-bg shadow-sm ring-1 ring-line-strong transition duration-75 focus-within:ring-2 focus-within:ring-primary-600 dark:focus-within:ring-primary-500 relative">
-                <div className="pointer-events-none pl-3 flex items-center text-fg-subtle shrink-0">
+                <div className="pointer-events-none pl-3 flex items-center text-fg-muted shrink-0">
                   <HeroEnvelope className="w-4 h-4" />
                 </div>
                 <input
@@ -205,7 +205,7 @@ export const LoginPage: React.FC = () => {
                 </button>
               </div>
               <div className="flex items-center rounded-lg bg-input-bg shadow-sm ring-1 ring-line-strong transition duration-75 focus-within:ring-2 focus-within:ring-primary-600 dark:focus-within:ring-primary-500 relative">
-                <div className="pointer-events-none pl-3 flex items-center text-fg-subtle shrink-0">
+                <div className="pointer-events-none pl-3 flex items-center text-fg-muted shrink-0">
                   <HeroLockClosed className="w-4 h-4" />
                 </div>
                 <input
@@ -221,7 +221,7 @@ export const LoginPage: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-fg-subtle hover:text-fg-muted cursor-pointer"
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-fg-muted hover:text-fg cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 rounded"
                   aria-label={showPassword ? 'Sembunyikan sandi' : 'Tampilkan sandi'}
                 >
                   {showPassword ? <HeroEyeSlash className="w-4 h-4" /> : <HeroEye className="w-4 h-4" />}
@@ -272,7 +272,7 @@ export const LoginPage: React.FC = () => {
                 >
                   <HeroShieldCheck className="w-4 h-4 text-amber-500 mb-1" />
                   <span className="text-xs font-bold text-fg group-hover:text-amber-500">Pengurus 1</span>
-                  <span className="text-[10px] text-fg-muted truncate w-full">Superadmin Harian</span>
+                  <span className="text-xs text-fg-muted truncate w-full">Superadmin Harian</span>
                 </button>
 
                 <button
@@ -282,7 +282,7 @@ export const LoginPage: React.FC = () => {
                 >
                   <HeroUser className="w-4 h-4 text-emerald-500 mb-1" />
                   <span className="text-xs font-bold text-fg group-hover:text-emerald-500">Ubudiyah</span>
-                  <span className="text-[10px] text-fg-muted truncate w-full">Ust. M. Ridwan</span>
+                  <span className="text-xs text-fg-muted truncate w-full">Ust. M. Ridwan</span>
                 </button>
 
                 <button
@@ -292,7 +292,7 @@ export const LoginPage: React.FC = () => {
                 >
                   <HeroUser className="w-4 h-4 text-blue-500 mb-1" />
                   <span className="text-xs font-bold text-fg group-hover:text-blue-500">Multimedia</span>
-                  <span className="text-[10px] text-fg-muted truncate w-full">Ahmad Zainullah</span>
+                  <span className="text-xs text-fg-muted truncate w-full">Ahmad Zainullah</span>
                 </button>
 
                 <button
@@ -302,7 +302,7 @@ export const LoginPage: React.FC = () => {
                 >
                   <HeroUser className="w-4 h-4 text-purple-500 mb-1" />
                   <span className="text-xs font-bold text-fg group-hover:text-purple-500">JAMUB</span>
-                  <span className="text-[10px] text-fg-muted truncate w-full">Ust. Fahrur Rozi</span>
+                  <span className="text-xs text-fg-muted truncate w-full">Ust. Fahrur Rozi</span>
                 </button>
               </div>
             </div>

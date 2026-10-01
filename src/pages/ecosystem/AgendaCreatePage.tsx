@@ -135,10 +135,10 @@ export const AgendaCreatePage: React.FC = () => {
               { label: 'Jadwalkan Baru' },
             ]}
           />
-          <h1 className="text-2xl font-bold tracking-tight text-fg">
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-fg">
             Jadwalkan Agenda Baru
           </h1>
-          <p className="text-sm text-fg-muted">
+          <p className="hidden sm:block text-xs sm:text-sm text-fg-muted">
             Lengkapi rincian kegiatan, induk program kerja, jadwal waktu, serta estimasi kebutuhan anggaran.
           </p>
         </div>
@@ -146,7 +146,7 @@ export const AgendaCreatePage: React.FC = () => {
           variant="secondary"
           icon={<HeroArrowLeft className="w-4 h-4" />}
           onClick={() => navigate('/agendas')}
-          className="shrink-0 self-start sm:self-auto"
+          className="hidden sm:inline-flex shrink-0 self-start sm:self-auto"
         >
           Kembali
         </Button>
@@ -256,15 +256,17 @@ export const AgendaCreatePage: React.FC = () => {
               type="button"
               variant="secondary"
               onClick={() => navigate('/agendas')}
+              className="w-full sm:w-auto justify-center"
             >
               Batal
             </Button>
-            <div className="flex items-center gap-3">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 w-full sm:w-auto">
               <Button
                 type="button"
                 variant="secondary"
                 disabled={isSaving}
                 onClick={(e) => handleSave(e as unknown as React.FormEvent, true)}
+                className="w-full sm:w-auto justify-center"
               >
                 <HeroPlus className="w-4 h-4 mr-1.5" />
                 Buat & Buat Lainnya
@@ -273,6 +275,7 @@ export const AgendaCreatePage: React.FC = () => {
                 type="submit"
                 variant="primary"
                 disabled={isSaving}
+                className="w-full sm:w-auto justify-center"
               >
                 <HeroCheck className="w-4 h-4 mr-1.5" />
                 {isSaving ? 'Memproses...' : 'Buat'}

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react'
+﻿import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import type { Personnel, Section } from '@/types/database'
 import {
   HeroPlus,
@@ -535,7 +535,7 @@ export const OrganizationTree: React.FC<OrganizationTreeProps> = ({
       {/* Interactive Mind-Map Toolbar */}
       <div className="px-4 py-3 border-b border-line bg-surface-muted flex flex-wrap items-center justify-between gap-3 shrink-0">
         {/* Search Input */}
-        <div className="relative w-72">
+        <div className="relative w-full sm:w-72">
           <HeroMagnifyingGlass className="w-4 h-4 text-fg-muted absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
           <input
             type="text"
@@ -545,7 +545,7 @@ export const OrganizationTree: React.FC<OrganizationTreeProps> = ({
               setFocusedSearchIndex(0)
             }}
             placeholder="Cari jabatan, personel, seksi..."
-            className="w-full pl-9 pr-8 py-1.5 text-xs rounded-lg bg-surface border border-line text-fg placeholder:text-fg-muted focus:outline-none focus:ring-1 focus:ring-amber-500"
+            className="w-full pl-9 pr-8 py-1.5 min-h-[44px] sm:min-h-0 text-xs rounded-lg bg-surface border border-line text-fg placeholder:text-fg-muted focus:outline-none focus:ring-1 focus:ring-amber-500"
           />
           {searchQuery && (
             <button
@@ -596,7 +596,7 @@ export const OrganizationTree: React.FC<OrganizationTreeProps> = ({
           <button
             type="button"
             onClick={() => setOrientation(o => (o === 'horizontal' ? 'vertical' : 'horizontal'))}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-surface border border-line text-fg hover:bg-hover-bg transition-colors cursor-pointer"
+            className="inline-flex items-center justify-center gap-1.5 px-2.5 min-w-[44px] min-h-[44px] text-xs font-semibold rounded-lg bg-surface border border-line text-fg hover:bg-hover-bg transition-colors cursor-pointer"
             aria-label="Ubah Orientasi Bagan"
           >
             {orientation === 'horizontal' ? (
@@ -617,7 +617,7 @@ export const OrganizationTree: React.FC<OrganizationTreeProps> = ({
             <button
               type="button"
               onClick={expandAll}
-              className="px-2.5 py-1.5 text-xs font-medium text-fg hover:bg-hover-bg transition-colors border-r border-line cursor-pointer"
+              className="px-2.5 min-h-[44px] text-xs font-medium text-fg hover:bg-hover-bg transition-colors border-r border-line cursor-pointer"
               title="Buka Seluruh Cabang"
             >
               Buka Semua
@@ -625,27 +625,27 @@ export const OrganizationTree: React.FC<OrganizationTreeProps> = ({
             <button
               type="button"
               onClick={collapseAll}
-              className="px-2.5 py-1.5 text-xs font-medium text-fg hover:bg-hover-bg transition-colors cursor-pointer"
+              className="px-2.5 min-h-[44px] text-xs font-medium text-fg hover:bg-hover-bg transition-colors cursor-pointer"
               title="Tutup Seluruh Cabang"
             >
               Tutup Semua
             </button>
           </div>
 
-          {/* Zoom Controls */}
+          {/* Zoom Controls — hit area minimal 44px pada ponsel (ergonomi jempol) */}
           <div className="flex items-center rounded-lg border border-line bg-surface overflow-hidden">
             <button
               type="button"
               onClick={handleZoomOut}
-              className="p-1.5 text-fg hover:bg-hover-bg border-r border-line transition-colors cursor-pointer"
+              className="inline-flex items-center justify-center min-w-[44px] min-h-[44px] text-fg hover:bg-hover-bg border-r border-line transition-colors cursor-pointer"
               aria-label="Perkecil"
             >
-              <HeroMinus className="w-3.5 h-3.5" />
+              <HeroMinus className="w-4 h-4" />
             </button>
             <button
               type="button"
               onClick={handleZoomReset}
-              className="px-2 py-1.5 text-[11px] font-mono font-semibold text-fg hover:bg-hover-bg border-r border-line transition-colors min-w-[3rem] text-center cursor-pointer"
+              className="inline-flex items-center justify-center min-h-[44px] px-2 text-xs font-mono font-semibold text-fg hover:bg-hover-bg border-r border-line transition-colors min-w-[3.5rem] text-center cursor-pointer"
               title="Reset Skala 100%"
             >
               {Math.round(zoom * 100)}%
@@ -653,19 +653,19 @@ export const OrganizationTree: React.FC<OrganizationTreeProps> = ({
             <button
               type="button"
               onClick={handleZoomIn}
-              className="p-1.5 text-fg hover:bg-hover-bg border-r border-line transition-colors cursor-pointer"
+              className="inline-flex items-center justify-center min-w-[44px] min-h-[44px] text-fg hover:bg-hover-bg border-r border-line transition-colors cursor-pointer"
               aria-label="Perbesar"
             >
-              <HeroPlus className="w-3.5 h-3.5" />
+              <HeroPlus className="w-4 h-4" />
             </button>
             <button
               type="button"
               onClick={handleFit}
-              className="p-1.5 text-fg hover:bg-hover-bg transition-colors cursor-pointer"
+              className="inline-flex items-center justify-center min-w-[44px] min-h-[44px] text-fg hover:bg-hover-bg transition-colors cursor-pointer"
               title="Paskan ke Layar"
               aria-label="Paskan ke Layar"
             >
-              <HeroArrowsPointingOut className="w-3.5 h-3.5" />
+              <HeroArrowsPointingOut className="w-4 h-4" />
             </button>
           </div>
 
@@ -674,11 +674,11 @@ export const OrganizationTree: React.FC<OrganizationTreeProps> = ({
             <button
               type="button"
               onClick={onExport}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-surface border border-line text-fg hover:border-amber-500/60 hover:text-amber-500 hover:bg-hover-bg transition-colors cursor-pointer"
+              className="inline-flex items-center justify-center gap-1.5 min-w-[44px] min-h-[44px] px-3 text-xs font-semibold rounded-lg bg-surface border border-line text-fg hover:border-amber-500/60 hover:text-amber-500 hover:bg-hover-bg transition-colors cursor-pointer"
               title="Ekspor Bagan (PNG / JPG / PDF / ZIP)"
               aria-label="Ekspor Bagan"
             >
-              <HeroArrowDownTray className="w-3.5 h-3.5 text-amber-500" />
+              <HeroArrowDownTray className="w-4 h-4 text-amber-500" />
               <span className="hidden sm:inline">Ekspor</span>
             </button>
           )}
@@ -825,7 +825,7 @@ export const OrganizationTree: React.FC<OrganizationTreeProps> = ({
                   </div>
 
                   {sec && (
-                    <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-surface-muted text-fg border border-line-divider shrink-0">
+                    <span className="px-1.5 py-0.5 rounded text-[11px] font-mono font-bold bg-surface-muted text-fg border border-line-divider shrink-0">
                       {sec.code}
                     </span>
                   )}
@@ -850,7 +850,7 @@ export const OrganizationTree: React.FC<OrganizationTreeProps> = ({
                     <button
                       type="button"
                       onClick={e => toggleCollapse(node.data.id, e)}
-                      className={`px-1.5 py-0.5 rounded-md text-[10px] font-bold border transition-colors flex items-center gap-0.5 shrink-0 ${
+                      className={`min-w-[36px] min-h-[36px] px-1.5 py-0.5 rounded-md text-[11px] font-bold border transition-colors inline-flex items-center justify-center gap-0.5 shrink-0 ${
                         isCollapsed
                           ? 'bg-amber-500 text-amber-950 border-amber-600 shadow-2xs font-bold'
                           : 'bg-surface-muted text-fg border-line-divider hover:bg-hover-bg'

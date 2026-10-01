@@ -84,8 +84,28 @@ export interface User {
 
 export type OrganizationStatus = 'active' | 'inactive' | 'archived' | 'trial' | 'suspended'
 
+export type OrganizationUnitType =
+  | 'pimpinan'
+  | 'lembaga'
+  | 'kelompok'
+  | 'unit'
+  | string
+
+export type OrganizationScopeMode = 'own' | 'descendants'
+
+export interface OrganizationScopeOptions {
+  organizationId: string
+  mode?: OrganizationScopeMode
+}
+
+export type OrganizationScopeInput = string | OrganizationScopeOptions
+
 export interface Organization {
   id: string
+  parent_id?: string | null
+  unit_type?: OrganizationUnitType
+  level?: number // 0 = root / pimpinan, 1 = lembaga, 2 = kelompok, 3+ = level n (arbitrary depth)
+  depth?: number // alias for level
   name: string
   short_name?: string // Nama khusus atau singkatan (e.g. "Jamub")
   code: string // e.g. "ORG-JKT-01"
@@ -100,6 +120,9 @@ export interface Organization {
   status: OrganizationStatus
   created_at: string
   updated_at?: string
+  // Virtual relations
+  parent?: Organization | null
+  children?: Organization[]
 }
 
 export interface OrganizationPeriod {
@@ -245,6 +268,8 @@ export interface Program {
   approved_by?: string
   status: ProgramStatus
   revision_notes?: string
+  // Stage 6: Downward Control — unit organisasi penerima / delegasi
+  assigned_to_organization_id?: string | null
   created_at: string
   updated_at?: string
   // Virtual relations
@@ -253,6 +278,7 @@ export interface Program {
   section?: Section
   organization?: Organization
   pic_personnel?: Personnel
+  assigned_to_organization?: Organization | null
 }
 
 // ------------------------------------------------------------------------------
@@ -466,10 +492,13 @@ export interface Task {
   completed_at?: string
   created_at: string
   updated_at?: string
+  // Stage 6: Downward Control — unit organisasi penerima / delegasi
+  assigned_to_organization_id?: string | null
   // Relations
   program?: Program
   agenda?: Agenda
   assignee?: User | { name: string }
+  assigned_to_organization?: Organization | null
 }
 
 // ------------------------------------------------------------------------------

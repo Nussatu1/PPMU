@@ -121,7 +121,7 @@ export const AgendaEditPage: React.FC = () => {
               { label: agenda?.title || 'Edit Agenda' },
             ]}
           />
-          <h1 className="text-2xl font-bold tracking-tight text-fg">
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-fg">
             {agenda?.title || 'Edit Agenda Kegiatan'}
           </h1>
           <p className="text-sm text-fg-muted">
@@ -132,7 +132,7 @@ export const AgendaEditPage: React.FC = () => {
           variant="secondary"
           icon={<HeroArrowLeft className="w-4 h-4" />}
           onClick={() => navigate('/agendas')}
-          className="shrink-0 self-start sm:self-auto"
+          className="hidden sm:inline-flex shrink-0 self-start sm:self-auto"
         >
           Kembali
         </Button>

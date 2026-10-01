@@ -235,11 +235,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
           )}
         </NavLink>
 
-        {/* Close button on mobile */}
+        {/* MOB-05: Close button — min-w/h 44px for accessible tap target */}
         <button
           type="button"
           onClick={onMobileClose}
-          className="lg:hidden rounded-lg p-1.5 text-fg-muted hover:text-fg hover:bg-hover-bg cursor-pointer"
+          className="lg:hidden min-w-[44px] min-h-[44px] inline-flex items-center justify-center rounded-xl text-fg-muted hover:text-fg hover:bg-hover-bg cursor-pointer transition-colors"
           aria-label="Tutup bilah samping"
         >
           <HeroXMark className="w-5 h-5" />
@@ -270,7 +270,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     onClick={onMobileClose}
                     aria-label={item.name}
                     className={({ isActive }) => cn(
-                        'fi-sidebar-item group flex items-center gap-x-3 rounded-lg px-2.5 py-2 text-sm font-medium w-full transition duration-75',
+                        'fi-sidebar-item group flex items-center gap-x-3 rounded-lg px-2.5 py-2 max-lg:py-3 text-sm font-medium w-full transition duration-75',
                         isActive
                           ? 'bg-nav-active text-primary-600 dark:text-primary-400 font-medium' 
                           : 'text-fg-nav hover:bg-nav-active hover:text-fg'
@@ -284,7 +284,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                               'shrink-0 w-5 h-5 transition-colors',
                               isActive
                                 ? 'text-primary-600 dark:text-primary-400'
-                                : 'text-fg-subtle group-hover:text-fg-muted'
+                                : 'text-fg-muted group-hover:text-fg'
                             )}
                           />
                           {!isCollapsed && (
@@ -338,7 +338,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {/* Mobile Drawer */}
       <aside
         className={cn(
-          'fixed inset-y-0 left-0 z-50 w-80 transform transition-transform duration-300 ease-in-out lg:hidden shadow-2xl',
+          'fixed inset-y-0 left-0 z-50 w-[85vw] max-w-[18rem] transform transition-transform duration-300 ease-in-out lg:hidden shadow-2xl',
           isMobileOpen ? 'translate-x-0' : '-translate-x-full'
         )}
       >

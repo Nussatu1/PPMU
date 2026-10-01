@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
+﻿import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { Portal } from '@headlessui/react'
 import { DayPicker, type DateRange } from 'react-day-picker'
 import 'react-day-picker/dist/style.css'
@@ -316,7 +316,7 @@ export const DatePicker: React.FC<DatePickerProps> = ({
           aria-haspopup="dialog"
           aria-expanded={isOpen}
           className={cn(
-            'w-full flex items-center justify-between rounded-lg border py-2 px-3 text-xs sm:text-sm text-left transition-colors shadow-2xs select-none min-h-[2.375rem] cursor-pointer',
+            'w-full flex items-center justify-between rounded-lg border py-2 px-3 text-xs sm:text-sm text-left transition-colors shadow-2xs select-none min-h-[44px] sm:min-h-[2.375rem] cursor-pointer',
             'bg-surface text-fg',
             error
               ? 'border-red-500 focus:ring-2 focus:ring-red-500/20'
@@ -341,7 +341,7 @@ export const DatePicker: React.FC<DatePickerProps> = ({
                 role="button"
                 tabIndex={0}
                 onClick={handleClear}
-                className="p-0.5 hover:text-fg rounded cursor-pointer"
+                className="inline-flex items-center justify-center min-w-[44px] min-h-[44px] -m-3 hover:text-fg rounded cursor-pointer"
                 aria-label="Hapus tanggal"
               >
                 <HeroXMark className="w-3.5 h-3.5" />

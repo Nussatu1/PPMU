@@ -30,6 +30,7 @@ dist-ssr
 # Exclude temporary demos, graphify-out, excel scratches
 Demos/
 graphify-out/
+.mobile-audit/
 *.xlsx
 .env
 .env.local

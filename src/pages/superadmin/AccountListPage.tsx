@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { Breadcrumb } from '@/components/layout/Breadcrumb'
 import { PageContainer } from '@/components/layout/PageContainer'
 import { Button } from '@/components/ui/Button'
 import { DataTable, type ColumnDef } from '@/components/ui/Table'
@@ -108,10 +107,10 @@ const ActionMenu: React.FC<ActionMenuProps> = ({
         ref={buttonRef}
         type="button"
         onClick={handleToggle}
-        className="p-1.5 rounded-lg text-fg-muted hover:text-fg hover:bg-hover-bg transition cursor-pointer"
+        className="w-11 h-11 flex items-center justify-center rounded-lg text-fg-muted hover:text-fg hover:bg-hover-bg transition cursor-pointer"
         title="Opsi Akun"
       >
-        <HeroEllipsisVertical className="w-4 h-4" />
+        <HeroEllipsisVertical className="w-5 h-5" />
       </button>
 
       {isOpen &&
@@ -595,21 +594,10 @@ Halo *${card.name}*, berikut akun akses Anda:
     <PageContainer variant="full">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <Breadcrumb
-            items={[
-              { label: 'Superadmin', href: '/accounts' },
-              { label: 'Akun Pengguna' },
-            ]}
-          />
-          <h1 className="text-2xl font-bold tracking-tight text-fg mt-1 flex items-center gap-2.5">
-            <HeroUsers className="w-7 h-7 text-amber-500" />
-            Pusat Akun Pengguna & Hak Akses
-          </h1>
-          <p className="text-xs text-fg-muted mt-1">
-            Daftar seluruh akun akses sistem untuk Administrator dan Anggota di seluruh organisasi.
-          </p>
-        </div>
+        <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-fg flex items-center gap-2.5">
+          <HeroUsers className="w-7 h-7 text-amber-500" />
+          Akun Pengguna
+        </h1>
 
         <Button
           variant="primary"
@@ -617,27 +605,25 @@ Halo *${card.name}*, berikut akun akses Anda:
           className="shrink-0 self-start sm:self-auto"
         >
           <HeroPlus className="w-4 h-4 mr-2" />
-          Terbitkan Akun Baru
+          Tambah Akun
         </Button>
       </div>
 
       {/* Filter Toolbar */}
-      <div className="p-4 rounded-xl bg-surface ring-1 ring-line shadow-xs space-y-3">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+      <div className="p-3 sm:p-4 rounded-xl bg-surface ring-1 ring-line shadow-xs">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5 sm:gap-3">
           {/* Search */}
           <div className="lg:col-span-1">
-            <label className="block text-[11px] font-medium text-fg-muted mb-1">Cari Akun</label>
             <Input
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Nama, username, email..."
+              placeholder="Cari akun..."
               className="text-xs h-9"
             />
           </div>
 
           {/* Org Filter */}
           <div>
-            <label className="block text-[11px] font-medium text-fg-muted mb-1">Organisasi</label>
             <Select
               value={selectedOrgFilter}
               onChange={(e) => setSelectedOrgFilter(e.target.value)}
@@ -651,7 +637,6 @@ Halo *${card.name}*, berikut akun akses Anda:
 
           {/* Level Filter */}
           <div>
-            <label className="block text-[11px] font-medium text-fg-muted mb-1">Tingkat</label>
             <Select
               value={selectedLevelFilter}
               onChange={(e) => setSelectedLevelFilter(e.target.value)}
@@ -666,7 +651,6 @@ Halo *${card.name}*, berikut akun akses Anda:
 
           {/* Role Filter */}
           <div>
-            <label className="block text-[11px] font-medium text-fg-muted mb-1">Peran (Role)</label>
             <Select
               value={selectedRoleFilter}
               onChange={(e) => setSelectedRoleFilter(e.target.value)}
@@ -680,7 +664,6 @@ Halo *${card.name}*, berikut akun akses Anda:
 
           {/* Status Filter */}
           <div>
-            <label className="block text-[11px] font-medium text-fg-muted mb-1">Status Akun</label>
             <Select
               value={selectedStatusFilter}
               onChange={(e) => setSelectedStatusFilter(e.target.value)}
@@ -702,6 +685,81 @@ Halo *${card.name}*, berikut akun akses Anda:
         isLoading={isLoading}
         searchPlaceholder="Filter akun..."
         searchKey="user.name"
+        renderCard={(mem) => {
+          const initial = (mem.user?.name || 'U').slice(0, 2).toUpperCase()
+          const isActive = mem.user?.status === 'active' && mem.status === 'active'
+          const isAdm = (mem.level || 'admin') === 'admin'
+
+          return (
+            <div className="p-4 rounded-xl bg-surface border border-line shadow-xs space-y-3">
+              {/* Top: Avatar, Name, Username, and Action Menu */}
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-10 h-10 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center font-bold text-xs shrink-0 ring-1 ring-amber-500/20">
+                    {initial}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="font-semibold text-fg text-sm truncate">{mem.user?.name}</span>
+                      {mem.user?.is_superadmin && (
+                        <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-amber-500/20 text-amber-800 dark:text-amber-300 shrink-0">
+                          Superadmin
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-fg-muted truncate">
+                      @{mem.user?.username || mem.user?.email?.split('@')[0]}
+                    </p>
+                  </div>
+                </div>
+
+                {/* ⋯ Action Menu */}
+                <div className="shrink-0 -mr-1 -mt-1">
+                  <ActionMenu
+                    membership={mem}
+                    onEdit={openEditModal}
+                    onResetPassword={(m) => setResetMem(m)}
+                    onToggleStatus={(m) => setStatusToggleMem(m)}
+                    onMoveOrg={(m) => {
+                      setMoveOrgMem(m)
+                      setMoveOrgForm({
+                        targetOrgId: m.organization_id,
+                        targetRoleId: m.role_id,
+                        level: m.level || 'anggota',
+                      })
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Email */}
+              <div className="text-xs font-mono text-fg-muted truncate">
+                {mem.user?.email || '-'}
+              </div>
+
+              {/* Divider */}
+              <div className="border-t border-line-divider" />
+
+              {/* Bottom Info: Organization, Role/Level, Status */}
+              <div className="flex items-center justify-between gap-2 flex-wrap text-xs">
+                <div className="min-w-0">
+                  <p className="font-medium text-fg truncate">
+                    {mem.organization?.name || 'Lintas Organisasi'}
+                  </p>
+                  <div className="flex items-center gap-1.5 mt-0.5 text-fg-muted">
+                    <span>{isAdm ? 'Admin' : 'Anggota'}</span>
+                    <span>•</span>
+                    <span className="font-medium text-fg">{mem.role?.name || 'Pengurus'}</span>
+                  </div>
+                </div>
+
+                <Badge variant={isActive ? 'success' : 'danger'}>
+                  {isActive ? '● Aktif' : '● Nonaktif'}
+                </Badge>
+              </div>
+            </div>
+          )
+        }}
       />
 
       {/* Form Modal (Create / Edit) */}

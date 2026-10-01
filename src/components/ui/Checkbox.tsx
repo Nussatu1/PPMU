@@ -41,7 +41,7 @@ export const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
 
     return (
       <div className={cn('inline-flex items-start gap-2.5 select-none', className)}>
-        <div className="relative flex items-center justify-center shrink-0 mt-1">
+        <div className="relative flex items-center justify-center shrink-0 mt-1 max-lg:min-w-[44px] max-lg:min-h-[44px] max-lg:mt-0">
           {/* Custom Styled Checkbox using appearance-none */}
           <input
             id={internalId}

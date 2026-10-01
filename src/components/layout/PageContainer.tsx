@@ -79,7 +79,7 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
     >
       <div className="min-w-0">
         {breadcrumbs && <div className="mb-1">{breadcrumbs}</div>}
-        <h1 className="text-2xl font-bold tracking-tight text-fg flex items-center gap-2.5 truncate">
+        <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-fg flex items-center gap-2.5 truncate">
           {icon && <span className="shrink-0">{icon}</span>}
           <span className="truncate">{title}</span>
         </h1>

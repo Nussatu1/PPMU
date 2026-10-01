@@ -92,26 +92,30 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({ isOpen, on
 
       {/* Modal Card */}
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Pencarian global"
         className="relative w-full max-w-xl rounded-xl shadow-xl overflow-hidden z-10 animate-scale-in bg-surface ring-1 ring-line"
       >
         {/* Search Input Bar */}
         <div
           className="flex items-center px-4 py-3 border-b border-line-divider"
         >
-          <HeroMagnifyingGlass className="w-5 h-5 text-fg-subtle mr-3 shrink-0" />
+          <HeroMagnifyingGlass className="w-5 h-5 text-fg-muted mr-3 shrink-0" />
           <input
             type="text"
             autoFocus
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder={t.globalSearch.placeholder}
-            className="w-full bg-transparent text-sm text-fg placeholder:text-fg-subtle focus:outline-none"
+            aria-label="Cari program, agenda, laporan, tugas, dan lainnya"
+            className="w-full bg-transparent text-base sm:text-sm text-fg placeholder:text-fg-subtle focus:outline-none"
           />
           {isLoading && <HeroArrowPath className="w-4 h-4 animate-spin text-primary-500 mr-2 shrink-0" />}
           <button
             type="button"
             onClick={onClose}
-            className="text-fg-subtle hover:text-fg p-1 rounded-lg hover:bg-hover-bg transition-colors cursor-pointer"
+            className="text-fg-muted hover:text-fg p-1.5 rounded-lg hover:bg-hover-bg transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
           >
             <HeroXMark className="w-4 h-4" />
           </button>
