@@ -159,7 +159,7 @@ export const RoleCreatePage: React.FC = () => {
 
   // Set read-only permissions for a specific resource
   const setResourceReadOnly = (resKey: PermissionResource) => {
-    const readActionKeys = ['view_any', 'view']
+    const readActionKeys = ['viewAny', 'view']
     setSelectedPermissions((prev) => {
       const next = new Set(prev)
       SHIELD_ACTIONS_GRID.forEach((a) => {
@@ -244,6 +244,7 @@ export const RoleCreatePage: React.FC = () => {
       await dataService.createRole(
         {
           name: name.trim(),
+          slug: slug.trim() || undefined,
           description: `Peran ${name.trim()} (${scope === 'system' ? 'Sistem Global' : 'Organisasi'})`,
           permissions: Array.from(selectedPermissions),
           status: 'active',

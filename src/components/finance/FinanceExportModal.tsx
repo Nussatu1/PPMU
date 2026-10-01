@@ -99,7 +99,7 @@ export const FinanceExportModal: React.FC<FinanceExportModalProps> = ({
       await exportFinanceToExcel({
         organizationName: orgName.trim(),
         organizationAddress: orgAddress.trim() || '-',
-        city: city.trim() || 'Jakarta',
+        city: city.trim() || 'Lumajang',
         documentDate: documentDate.trim() || undefined,
         roleTitle: roleTitle.trim() || 'Staf Keuangan',
         signeeName: signeeName.trim() || user?.name || 'PENANGGUNG JAWAB',

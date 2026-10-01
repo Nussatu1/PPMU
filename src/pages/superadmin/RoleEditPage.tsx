@@ -132,7 +132,7 @@ export const RoleEditPage: React.FC = () => {
 
   // Set read-only permissions for a specific resource
   const setResourceReadOnly = (resKey: PermissionResource) => {
-    const readActionKeys = ['view_any', 'view']
+    const readActionKeys = ['viewAny', 'view']
     setSelectedPermissions((prev) => {
       const next = new Set(prev)
       SHIELD_ACTIONS_GRID.forEach((a) => {
@@ -242,6 +242,7 @@ export const RoleEditPage: React.FC = () => {
         id,
         {
           name: name.trim(),
+          slug: slug.trim() || undefined,
           permissions: Array.from(selectedPermissions),
           is_system: scope === 'system',
         },
