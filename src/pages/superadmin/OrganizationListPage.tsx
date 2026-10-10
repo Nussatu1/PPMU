@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { PageContainer } from '@/components/layout/PageContainer'
 import { Button } from '@/components/ui/Button'
 import { DataTable, type ColumnDef } from '@/components/ui/Table'
@@ -15,12 +16,15 @@ import type {
   User,
   RoleEntity,
   OrganizationUnitType,
+  Section as SectionEntity,
+  Personnel,
 } from '@/types/database'
 import {
   getOrganizationTree,
   getDescendantOrganizationIds,
   type OrganizationTreeNode,
 } from '@/lib/hierarchyService'
+import { canCreateOrganizationStructure } from '@/lib/authorization'
 import { OrganizationTreeView } from '@/components/organization'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
@@ -38,10 +42,13 @@ import {
   HeroArrowLeft,
   HeroMapPin,
   HeroSquares2X2,
+  HeroFolder,
+  HeroArrowsRightLeft,
 } from '@/components/icons/HeroIcons'
 import { cn } from '@/lib/utils'
 
 export const OrganizationListPage: React.FC = () => {
+  const [searchParams, setSearchParams] = useSearchParams()
   const { user, currentOrganization, switchOrganization, refreshOrganizations } = useAuth()
   const { success, error } = useToast()
   const { confirm } = useConfirm()
@@ -73,6 +80,29 @@ export const OrganizationListPage: React.FC = () => {
     unit_type: 'unit' as OrganizationUnitType,
   })
 
+  // Single-Door Seksi & Bagan State (Tersimpan & Dikelola bersamaan)
+  const [orgSections, setOrgSections] = useState<SectionEntity[]>([])
+  const [orgPersonnels, setOrgPersonnels] = useState<Personnel[]>([])
+  
+  // Sub-Modal: Tambah/Edit Seksi Terpadu
+  const [isSectionModalOpen, setIsSectionModalOpen] = useState(false)
+  const [, setEditingSecIndex] = useState<number | null>(null)
+  const [secForm, setSecForm] = useState({ name: '', code: '', description: '' })
+
+  // Sub-Modal: Tambah/Edit Bagan & Jabatan Terpadu
+  const [isPersonnelModalOpen, setIsPersonnelModalOpen] = useState(false)
+  const [, setEditingPrsIndex] = useState<number | null>(null)
+  const [prsForm, setPrsForm] = useState({
+    position: '',
+    name: '',
+    user_id: '',
+    section_name: '',
+    parent_position: '',
+    tupoksi: '',
+    authority: '',
+    responsibility: '',
+  })
+
   // Read-Only Preview Members Modal (dari badge kolom tabel luar)
   const [previewMembersOrg, setPreviewMembersOrg] = useState<Organization | null>(null)
 
@@ -95,6 +125,7 @@ export const OrganizationListPage: React.FC = () => {
   const loadData = useCallback(async () => {
     setIsLoading(true)
     try {
+      dataService.reloadSharedStructural()
       const [orgs, mems, usrs, rls] = await Promise.all([
         dataService.getOrganizations(user),
         dataService.getMemberships(undefined, user),
@@ -116,6 +147,18 @@ export const OrganizationListPage: React.FC = () => {
   useEffect(() => {
     loadData()
   }, [loadData])
+
+  // Otomatis buka form tambah jika URL memiliki query ?action=create atau ?create=true
+  useEffect(() => {
+    const action = searchParams.get('action')
+    const create = searchParams.get('create')
+    const parentId = searchParams.get('parentId')
+    if (action === 'create' || create === 'true') {
+      openCreateForm(parentId)
+      // Bersihkan param URL tanpa reload
+      setSearchParams({}, { replace: true })
+    }
+  }, [searchParams])
 
   // Cegat MobileAppHeader back saat form aktif agar menutup form dan tetap di /organizations
   useEffect(() => {
@@ -148,13 +191,16 @@ export const OrganizationListPage: React.FC = () => {
   const openCreateForm = (prefilledParentId?: string | null) => {
     setEditingOrg(null)
     const parentOrg = organizations.find((o) => o.id === prefilledParentId)
+    const pType = parentOrg?.unit_type?.toLowerCase()
     const suggestedType: OrganizationUnitType = !prefilledParentId
-      ? 'pimpinan'
-      : parentOrg?.unit_type === 'pimpinan'
-      ? 'lembaga'
-      : parentOrg?.unit_type === 'lembaga'
-      ? 'kelompok'
-      : 'unit'
+      ? 'kepala_pengurus'
+      : pType === 'kepala_pengurus' || pType === 'pimpinan'
+      ? 'waka'
+      : pType === 'waka'
+      ? 'seksi'
+      : pType === 'seksi'
+      ? 'organisasi'
+      : 'organisasi'
 
     setFormData({
       name: '',
@@ -171,11 +217,13 @@ export const OrganizationListPage: React.FC = () => {
       parent_id: prefilledParentId || null,
       unit_type: suggestedType,
     })
+    setOrgSections([])
+    setOrgPersonnels([])
     setViewMode('form')
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
-  const openEditForm = (org: Organization) => {
+  const openEditForm = async (org: Organization) => {
     setEditingOrg(org)
     setFormData({
       name: org.name || '',
@@ -192,6 +240,17 @@ export const OrganizationListPage: React.FC = () => {
       parent_id: org.parent_id || null,
       unit_type: (org.unit_type as OrganizationUnitType) || 'unit',
     })
+    try {
+      const [existingSecs, existingPrss] = await Promise.all([
+        dataService.getSections(org.id, undefined, user),
+        dataService.getPersonnels(org.id, undefined, user),
+      ])
+      setOrgSections(existingSecs)
+      setOrgPersonnels(existingPrss)
+    } catch {
+      setOrgSections([])
+      setOrgPersonnels([])
+    }
     setViewMode('form')
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
@@ -256,24 +315,89 @@ export const OrganizationListPage: React.FC = () => {
         level: currentDerivedLevel,
       }
 
+      let savedOrgId = ''
       if (editingOrg) {
         await dataService.updateOrganization(
           editingOrg.id,
           { ...payload, email: editingOrg.email || email },
           user
         )
+        savedOrgId = editingOrg.id
         success('Organisasi Diperbarui', `Organisasi "${formData.name}" berhasil diperbarui.`)
-        await refreshOrganizations()
-        setViewMode('list')
       } else {
-        await dataService.createOrganization(payload, user)
+        const created = await dataService.createOrganization(payload, user)
+        savedOrgId = created.id
         success('Organisasi Dibuat', `Organisasi "${formData.name}" berhasil ditambahkan ke ekosistem.`)
-        await refreshOrganizations()
-        if (createAnother) {
-          openCreateForm(formData.parent_id)
-        } else {
-          setViewMode('list')
+      }
+
+      // SINGLE-DOOR: Simpan Seksi dan Bagan/Jabatan yang telah dirancang di pintu ini
+      if (savedOrgId) {
+        // Ambil struktur yang di-autoprovision sistem
+        const orgStructs = await dataService.getStructures(savedOrgId, user)
+        const activeStructId = orgStructs[0]?.id || 'str-auto'
+
+        // 1. Simpan Seksi baru (yang belum punya id di database)
+        const sectionIdMap: Record<string, string> = {}
+        for (const sec of orgSections) {
+          if (!sec.id || sec.id.startsWith('draft-')) {
+            const createdSec = await dataService.createSection(
+              {
+                name: sec.name,
+                code: sec.code,
+                description: sec.description || '',
+                organization_id: savedOrgId,
+                structure_id: activeStructId,
+              },
+              user
+            )
+            sectionIdMap[sec.name] = createdSec.id
+          } else {
+            sectionIdMap[sec.name] = sec.id
+          }
         }
+
+        // 2. Simpan Bagan / Personel baru
+        for (const prs of orgPersonnels) {
+          if (!prs.id || prs.id.startsWith('draft-')) {
+            const targetSecId =
+              (prs.section && sectionIdMap[prs.section.name]) ||
+              sectionIdMap[(prs as any).section_name] ||
+              orgSections[0]?.id ||
+              ''
+
+            await dataService.createPersonnel(
+              {
+                name: prs.name || undefined,
+                position: prs.position || prs.role_title || 'Pengurus',
+                role_title: prs.position || prs.role_title || 'Pengurus',
+                user_id: prs.user_id || undefined,
+                organization_id: savedOrgId,
+                section_id: targetSecId,
+                parent_id: prs.parent_id || null,
+                tupoksi: prs.tupoksi || undefined,
+                authority: prs.authority || undefined,
+                responsibility: prs.responsibility || undefined,
+                status: 'active',
+              },
+              user
+            )
+          }
+        }
+      }
+
+      if (savedOrgId) {
+        try {
+          sessionStorage.setItem('filament_bakid_active_org_id', savedOrgId)
+        } catch {}
+      }
+      await refreshOrganizations()
+      if (savedOrgId) {
+        switchOrganization(savedOrgId)
+      }
+      if (createAnother) {
+        openCreateForm(formData.parent_id)
+      } else {
+        setViewMode('list')
       }
       loadData()
     } catch (err: unknown) {
@@ -398,6 +522,13 @@ export const OrganizationListPage: React.FC = () => {
     (u) => !existingEditingOrgUserIds.has(u.id)
   )
 
+  // Komputes whether the current user (based on their active org's unit_type) is
+  // authorized to create new hierarchy structure nodes.
+  // WAKA, SEKSI, ORGANISASI -> always false regardless of permissions.
+  const canCreateStructure = useMemo(() => {
+    return canCreateOrganizationStructure(user, null, undefined, organizations)
+  }, [user, organizations])
+
   // Filter preview org members (di modal read-only luar)
   const previewOrgMembers = previewMembersOrg
     ? memberships.filter((m) => m.organization_id === previewMembersOrg.id)
@@ -425,19 +556,21 @@ export const OrganizationListPage: React.FC = () => {
             <div className="flex items-center gap-1.5">
               <p className="font-semibold text-fg truncate">{org.name}</p>
               {org.short_name && (
-                <span className="px-1.5 py-0.5 text-[10px] font-bold rounded bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300">
+                <span className="px-2 py-0.5 text-xs font-medium rounded-md bg-amber-500/10 text-amber-700 dark:text-amber-300 ring-1 ring-amber-500/20">
                   {org.short_name}
                 </span>
               )}
             </div>
-            <p className="text-xs text-fg-muted truncate">{org.description || 'Tidak ada deskripsi'}</p>
+            {org.description && (
+              <p className="text-xs text-fg-muted truncate">{org.description}</p>
+            )}
           </div>
         </div>
       ),
     },
     {
       key: 'code',
-      label: 'Kode Identifikasi',
+      label: 'Kode',
       sortable: true,
       render: (org) => (
         <span className="font-mono text-xs font-semibold px-2 py-0.5 rounded bg-surface-muted text-fg">
@@ -447,18 +580,18 @@ export const OrganizationListPage: React.FC = () => {
     },
     {
       key: 'members',
-      label: 'Pengurus & Anggota',
+      label: 'Anggota',
       render: (org) => {
         const orgMembers = memberships.filter((m) => m.organization_id === org.id)
         return (
           <button
             type="button"
             onClick={() => setPreviewMembersOrg(org)}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-amber-500/10 text-amber-700 dark:text-amber-300 hover:bg-amber-500/20 transition cursor-pointer"
-            title="Klik untuk melihat anggota terdaftar"
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-surface-muted hover:bg-hover-bg text-fg ring-1 ring-line transition cursor-pointer"
+            title="Lihat anggota"
           >
-            <HeroUsers className="w-3.5 h-3.5" />
-            <span>{orgMembers.length} Akun Terdaftar</span>
+            <HeroUsers className="w-3.5 h-3.5 text-fg-muted" />
+            <span>{orgMembers.length} Akun</span>
           </button>
         )
       },
@@ -496,34 +629,42 @@ export const OrganizationListPage: React.FC = () => {
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-fg flex items-center gap-2.5">
               <HeroBuildingOffice className="w-7 h-7 text-amber-500" />
-              Manajemen Organisasi
+              Organisasi
             </h1>
 
-            <Button
-              variant="primary"
-              onClick={() => openCreateForm()}
-              className="shrink-0 self-start sm:self-auto"
-            >
-              <HeroPlus className="w-4 h-4 mr-2" />
-              Tambah Organisasi
-            </Button>
+            {canCreateStructure ? (
+              <Button
+                variant="primary"
+                onClick={() => openCreateForm()}
+                className="shrink-0 self-start sm:self-auto"
+                id="btn-tambah-organisasi"
+              >
+                <HeroPlus className="w-4 h-4 mr-2" />
+                Tambah
+              </Button>
+            ) : (
+              <div className="shrink-0 self-start sm:self-auto px-3 py-1.5 rounded-lg border border-line bg-surface-muted text-xs text-fg-muted font-medium flex items-center gap-2">
+                <HeroBuildingOffice className="w-4 h-4 text-fg-muted" />
+                Hak kelola struktur: Ketua Pengurus
+              </div>
+            )}
           </div>
 
           {/* Overview Stat Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="p-4 rounded-xl border border-line bg-surface shadow-2xs">
-              <p className="text-xs font-semibold text-fg-muted uppercase">Total Terdaftar</p>
-              <p className="text-2xl font-bold text-fg mt-1">{organizations.length}</p>
+            <div className="p-5 rounded-xl border border-line bg-surface">
+              <p className="text-xs font-medium text-fg-muted">Total Organisasi</p>
+              <p className="text-2xl font-bold tracking-tight text-fg mt-1.5">{organizations.length}</p>
             </div>
-            <div className="p-4 rounded-xl border border-line bg-surface shadow-2xs">
-              <p className="text-xs font-semibold text-fg-muted uppercase">Status Aktif</p>
-              <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400 mt-1">
+            <div className="p-5 rounded-xl border border-line bg-surface">
+              <p className="text-xs font-medium text-fg-muted">Organisasi Aktif</p>
+              <p className="text-2xl font-bold tracking-tight text-emerald-600 dark:text-emerald-400 mt-1.5">
                 {organizations.filter((o) => o.status === 'active').length}
               </p>
             </div>
-            <div className="p-4 rounded-xl border border-line bg-surface shadow-2xs">
-              <p className="text-xs font-semibold text-fg-muted uppercase">Periode Uji Coba</p>
-              <p className="text-2xl font-bold text-amber-600 dark:text-amber-400 mt-1">
+            <div className="p-5 rounded-xl border border-line bg-surface">
+              <p className="text-xs font-medium text-fg-muted">Masa Uji Coba</p>
+              <p className="text-2xl font-bold tracking-tight text-amber-600 dark:text-amber-400 mt-1.5">
                 {organizations.filter((o) => o.status === 'trial').length}
               </p>
             </div>
@@ -543,7 +684,7 @@ export const OrganizationListPage: React.FC = () => {
                 )}
               >
                 <HeroSquares2X2 className="w-3.5 h-3.5" />
-                <span>Struktur Pohon (Hierarki)</span>
+                <span>Pohon Hierarki</span>
               </button>
               <button
                 type="button"
@@ -555,12 +696,9 @@ export const OrganizationListPage: React.FC = () => {
                     : "text-fg-muted hover:text-fg"
                 )}
               >
-                <span>Tabel Flat</span>
+                <span>Tabel</span>
               </button>
             </div>
-            <p className="text-xs text-fg-muted">
-              {displayMode === 'tree' ? 'Navigasi bertingkat Pimpinan → Lembaga → Kelompok/Unit' : 'Tampilan tabel datar seluruh data organisasi'}
-            </p>
           </div>
 
           {/* Konten Utama Berdasarkan Mode Tampilan */}
@@ -572,7 +710,7 @@ export const OrganizationListPage: React.FC = () => {
               onSwitchOrganization={(orgId) => switchOrganization(orgId)}
               onEdit={openEditForm}
               onDelete={handleDelete}
-              onCreateChild={(parentId) => openCreateForm(parentId)}
+              onCreateChild={canCreateStructure ? (parentId) => openCreateForm(parentId) : undefined}
               onPreviewMembers={(org) => setPreviewMembersOrg(org)}
             />
           ) : (
@@ -748,15 +886,19 @@ export const OrganizationListPage: React.FC = () => {
                   label="Tipe Unit Organisasi"
                   value={formData.unit_type}
                   options={[
-                    { value: 'pimpinan', label: 'Pimpinan (Pusat / Wilayah)' },
-                    { value: 'lembaga', label: 'Lembaga / Biro / Divisi' },
-                    { value: 'kelompok', label: 'Kelompok / Seksi / Bagian' },
-                    { value: 'unit', label: 'Unit / Pokja Pelaksana' },
+                    { value: 'kepala_pengurus', label: 'Kepala Pengurus (Pucuk Pimpinan Tertinggi)' },
+                    { value: 'waka', label: 'Waka (Wakil Kepala / Koordinator Bidang)' },
+                    { value: 'seksi', label: 'Seksi Struktural (Pengawal Bidang)' },
+                    { value: 'organisasi', label: 'Organisasi Pelaksana (Binaan / Teknis)' },
+                    { value: 'pimpinan', label: 'Pimpinan (Legacy)' },
+                    { value: 'lembaga', label: 'Lembaga / Biro (Legacy)' },
+                    { value: 'kelompok', label: 'Kelompok (Legacy)' },
+                    { value: 'unit', label: 'Unit / Pokja (Legacy)' },
                   ]}
                   onChange={(e) =>
                     setFormData({ ...formData, unit_type: e.target.value as OrganizationUnitType })
                   }
-                  helperText="Klasifikasi struktural unit dalam tata kelola organisasi"
+                  helperText="Klasifikasi struktural unit dalam tata kelola hierarki organisasi"
                 />
               </div>
 
@@ -875,7 +1017,154 @@ export const OrganizationListPage: React.FC = () => {
               </div>
             </Section>
 
-            {/* SECTION 3: PENGURUS & ANGGOTA ORGANISASI */}
+            {/* SECTION 3: SEKSI (DIVISI / BIDANG KERJA) — SATU PINTU */}
+            <Section
+              title="Seksi (Divisi / Pos Bidang Kerja)"
+              icon={<HeroFolder className="w-4 h-4 text-emerald-500" />}
+              collapsible
+              defaultCollapsed={false}
+              columns={12}
+            >
+              <div className="col-span-12 space-y-3">
+                <div className="flex items-center justify-between pb-2 border-b border-line">
+                  <p className="text-xs text-fg-muted">
+                    Bagi unit ini ke dalam pos departemen kerja (misal: Seksi Kurikulum, Seksi Sarpras, Seksi Humas).
+                  </p>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => {
+                      setEditingSecIndex(null)
+                      setSecForm({ name: '', code: '', description: '' })
+                      setIsSectionModalOpen(true)
+                    }}
+                    className="shrink-0 text-xs"
+                  >
+                    <HeroPlus className="w-3.5 h-3.5 mr-1" />
+                    + Tambah Seksi
+                  </Button>
+                </div>
+
+                {orgSections.length === 0 ? (
+                  <div className="py-6 text-center text-xs text-fg-muted border border-dashed border-line rounded-xl bg-surface-muted/30">
+                    Belum ada Seksi yang ditambahkan. Klik <strong>"+ Tambah Seksi"</strong> untuk membagi urusan kerja.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {orgSections.map((sec, idx) => (
+                      <div
+                        key={sec.id || `sec-${idx}`}
+                        className="p-3.5 rounded-xl border border-line bg-surface-muted/40 hover:bg-surface-muted/70 transition flex items-start justify-between gap-2"
+                      >
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-bold text-fg text-sm truncate">{sec.name}</span>
+                            <span className="px-1.5 py-0.2 rounded text-[10px] font-mono font-bold bg-surface text-fg border border-line">
+                              {sec.code}
+                            </span>
+                          </div>
+                          {sec.description && (
+                            <p className="text-xs text-fg-muted mt-1 truncate">{sec.description}</p>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setOrgSections((prev) => prev.filter((_, i) => i !== idx))
+                          }}
+                          className="p-1 rounded text-red-500 hover:bg-red-500/10 transition cursor-pointer shrink-0"
+                          title="Hapus Seksi"
+                        >
+                          <HeroTrash className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </Section>
+
+            {/* SECTION 4: BAGAN (POSISI JABATAN & ATASAN-BAWAHAN) — SATU PINTU */}
+            <Section
+              title="Bagan (Posisi Jabatan & Hierarki)"
+              icon={<HeroArrowsRightLeft className="w-4 h-4 text-amber-500" />}
+              collapsible
+              defaultCollapsed={false}
+              columns={12}
+            >
+              <div className="col-span-12 space-y-3">
+                <div className="flex items-center justify-between pb-2 border-b border-line">
+                  <p className="text-xs text-fg-muted">
+                    Rancang bagan kepengurusan (Ketua, Sekretaris, Koordinator) dan kaitkan ke Seksi serta Atasan langsung.
+                  </p>
+                  <Button
+                    type="button"
+                    variant="primary"
+                    size="sm"
+                    onClick={() => {
+                      setEditingPrsIndex(null)
+                      setPrsForm({
+                        position: '',
+                        name: '',
+                        user_id: '',
+                        section_name: orgSections[0]?.name || '',
+                        parent_position: '',
+                        tupoksi: '',
+                        authority: '',
+                        responsibility: '',
+                      })
+                      setIsPersonnelModalOpen(true)
+                    }}
+                    className="shrink-0 text-xs"
+                  >
+                    <HeroPlus className="w-3.5 h-3.5 mr-1" />
+                    + Tambah Posisi Bagan
+                  </Button>
+                </div>
+
+                {orgPersonnels.length === 0 ? (
+                  <div className="py-6 text-center text-xs text-fg-muted border border-dashed border-line rounded-xl bg-surface-muted/30">
+                    Belum ada Posisi Jabatan di bagan. Klik <strong>"+ Tambah Posisi Bagan"</strong> untuk menyusun hierarki.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {orgPersonnels.map((prs, idx) => (
+                      <div
+                        key={prs.id || `prs-${idx}`}
+                        className="p-3.5 rounded-xl border border-line bg-surface-muted/40 hover:bg-surface-muted/70 transition flex items-start justify-between gap-2"
+                      >
+                        <div className="min-w-0">
+                          <span className="font-bold text-fg text-sm block truncate">
+                            {prs.position || prs.role_title}
+                          </span>
+                          <span className="text-xs text-fg-muted block truncate mt-0.5">
+                            Pejabat: <strong>{prs.name || 'Belum Ditentukan'}</strong>
+                          </span>
+                          {(prs as any).section_name && (
+                            <span className="inline-block mt-1 px-1.5 py-0.2 rounded text-[10px] font-medium bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-500/20">
+                              {(prs as any).section_name}
+                            </span>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setOrgPersonnels((prev) => prev.filter((_, i) => i !== idx))
+                          }}
+                          className="p-1 rounded text-red-500 hover:bg-red-500/10 transition cursor-pointer shrink-0"
+                          title="Hapus Jabatan"
+                        >
+                          <HeroTrash className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </Section>
+
+            {/* SECTION 5: PENGURUS & ANGGOTA ORGANISASI */}
             {editingOrg && (
               <div className="rounded-xl border border-line bg-surface shadow-xs overflow-hidden">
                 <div className="p-4 sm:p-5 border-b border-line bg-surface-muted/50 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -1323,6 +1612,170 @@ export const OrganizationListPage: React.FC = () => {
           </div>
         </Modal>
       )}
+
+      {/* MODAL 5: Tambah/Edit Seksi Terpadu */}
+      <Modal
+        isOpen={isSectionModalOpen}
+        onClose={() => setIsSectionModalOpen(false)}
+        title="Tambah Seksi (Pos Bidang Kerja)"
+        size="md"
+      >
+        <form
+          noValidate
+          onSubmit={(e) => {
+            e.preventDefault()
+            if (!secForm.name.trim() || !secForm.code.trim()) {
+              error('Validasi Gagal', 'Nama dan Kode Seksi wajib diisi')
+              return
+            }
+            const newSec: SectionEntity = {
+              id: `draft-sec-${Date.now()}`,
+              name: secForm.name.trim(),
+              code: secForm.code.trim().toUpperCase(),
+              description: secForm.description.trim() || undefined,
+              structure_id: 'str-draft',
+              organization_id: editingOrg?.id || 'org-draft',
+              created_at: new Date().toISOString(),
+            }
+            setOrgSections((prev) => [...prev, newSec])
+            setIsSectionModalOpen(false)
+            success('Seksi Ditambahkan', `Seksi ${newSec.name} dimasukkan ke draf organisasi.`)
+          }}
+          className="space-y-4"
+        >
+          <Input
+            label="Nama Seksi"
+            required
+            value={secForm.name}
+            onChange={(e) => setSecForm({ ...secForm, name: e.target.value })}
+            placeholder="Contoh: Seksi Kurikulum & Pengajaran"
+          />
+          <Input
+            label="Kode Seksi"
+            required
+            value={secForm.code}
+            onChange={(e) => setSecForm({ ...secForm, code: e.target.value.toUpperCase() })}
+            placeholder="Contoh: KUR"
+          />
+          <Textarea
+            label="Deskripsi / Ruang Lingkup"
+            rows={2}
+            value={secForm.description}
+            onChange={(e) => setSecForm({ ...secForm, description: e.target.value })}
+            placeholder="Uraian ringkas tugas divisi..."
+          />
+          <div className="flex justify-end gap-2 pt-3 border-t border-line">
+            <Button type="button" variant="secondary" onClick={() => setIsSectionModalOpen(false)}>
+              Batal
+            </Button>
+            <Button type="submit" variant="primary">
+              <HeroCheck className="w-4 h-4 mr-1.5" />
+              Simpan Seksi
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* MODAL 6: Tambah Posisi Bagan Terpadu */}
+      <Modal
+        isOpen={isPersonnelModalOpen}
+        onClose={() => setIsPersonnelModalOpen(false)}
+        title="Tambah Posisi Jabatan di Bagan"
+        size="lg"
+      >
+        <form
+          noValidate
+          onSubmit={(e) => {
+            e.preventDefault()
+            if (!prsForm.position.trim()) {
+              error('Validasi Gagal', 'Nama Jabatan wajib diisi')
+              return
+            }
+            const newPrs: any = {
+              id: `draft-prs-${Date.now()}`,
+              position: prsForm.position.trim(),
+              role_title: prsForm.position.trim(),
+              name: prsForm.name.trim() || undefined,
+              user_id: prsForm.user_id || undefined,
+              section_name: prsForm.section_name || undefined,
+              section_id: '',
+              parent_id: null,
+              tupoksi: prsForm.tupoksi.trim() || undefined,
+              authority: prsForm.authority.trim() || undefined,
+              responsibility: prsForm.responsibility.trim() || undefined,
+              status: 'active',
+              created_at: new Date().toISOString(),
+            }
+            setOrgPersonnels((prev) => [...prev, newPrs])
+            setIsPersonnelModalOpen(false)
+            success('Jabatan Ditambahkan', `Posisi ${newPrs.position} dimasukkan ke draf bagan.`)
+          }}
+          className="space-y-4"
+        >
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Input
+              label="Nama Jabatan / Posisi"
+              required
+              value={prsForm.position}
+              onChange={(e) => setPrsForm({ ...prsForm, position: e.target.value })}
+              placeholder="Contoh: Koordinator Pembinaan"
+            />
+            <Input
+              label="Nama Pejabat / Ustadz (Opsional)"
+              value={prsForm.name}
+              onChange={(e) => setPrsForm({ ...prsForm, name: e.target.value })}
+              placeholder="Contoh: Ust. Ahmad Fauzi"
+            />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Select
+              label="Naungan Seksi"
+              value={prsForm.section_name}
+              onChange={(e) => setPrsForm({ ...prsForm, section_name: e.target.value })}
+              options={[
+                { value: '', label: '— Tanpa Seksi Spesifik / Pimpinan —' },
+                ...orgSections.map((s) => ({ value: s.name, label: `${s.name} (${s.code})` })),
+              ]}
+            />
+            <Select
+              label="Hubungkan ke Akun Pengguna"
+              value={prsForm.user_id}
+              onChange={(e) => {
+                const uId = e.target.value
+                const matched = allUsers.find((u) => u.id === uId)
+                setPrsForm({
+                  ...prsForm,
+                  user_id: uId,
+                  name: matched ? matched.name : prsForm.name,
+                })
+              }}
+              options={[
+                { value: '', label: '— Manual (Tanpa Akun Login) —' },
+                ...allUsers.map((u) => ({ value: u.id, label: `${u.name} (${u.email})` })),
+              ]}
+            />
+          </div>
+
+          <Textarea
+            label="Tupoksi (Tugas Pokok & Fungsi)"
+            rows={2}
+            value={prsForm.tupoksi}
+            onChange={(e) => setPrsForm({ ...prsForm, tupoksi: e.target.value })}
+            placeholder="Uraian tanggung jawab operasional..."
+          />
+
+          <div className="flex justify-end gap-2 pt-3 border-t border-line">
+            <Button type="button" variant="secondary" onClick={() => setIsPersonnelModalOpen(false)}>
+              Batal
+            </Button>
+            <Button type="submit" variant="primary">
+              <HeroCheck className="w-4 h-4 mr-1.5" />
+              Simpan ke Bagan
+            </Button>
+          </div>
+        </form>
+      </Modal>
     </PageContainer>
   )
 }

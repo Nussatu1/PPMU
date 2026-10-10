@@ -1,32 +1,7 @@
 import { supabase, isSupabaseConfigured } from './supabase'
 import {
   initialUsers,
-  initialCategories,
-  initialBrands,
-  initialProducts,
-  initialCategoryProducts,
-  initialCustomers,
-  initialOrders,
-  initialPayments,
-  initialComments,
-  initialAddresses,
-  initialAddressables,
-  initialOrganizations,
-  initialPeriods,
   initialRoles,
-  initialMemberships,
-  initialStructures,
-  initialSections,
-  initialPersonnels,
-  initialPrograms,
-  initialAgendas,
-  initialPerformances,
-  initialBudgets,
-  initialTransactions,
-  initialReports,
-  initialTasks,
-  initialNotifications,
-  initialAuditLogs,
 } from './mockData'
 import type {
   User,
@@ -47,6 +22,9 @@ import type {
   Structure,
   Section,
   Personnel,
+  Person,
+  AccountHolderHistory,
+  HandoverAccountHolderParams,
   Program,
   Agenda,
   Performance,
@@ -73,6 +51,9 @@ import {
   canTransitionReportStatus,
   canTransitionTaskStatus,
   assertCanAssignToOrganization,
+  assertCanApproveProgram,
+  assertCanManageAccountHandover,
+  assertCanCreateOrganizationStructure,
 } from './authorization'
 
 import {
@@ -100,6 +81,7 @@ const accountCache = new Map<string, Map<string, any>>()
 
 // Fallback storage when localStorage is unavailable (e.g. Node CLI testing)
 const nodeStorageFallback = new Map<string, string>()
+const nodeSessionStorageFallback = new Map<string, string>()
 
 function getRawStorageItem(key: string): string | null {
   try {
@@ -132,8 +114,36 @@ function removeRawStorageItem(key: string): void {
   } catch {}
 }
 
-// Operational collections that must be strictly isolated per account
-const PARTITIONED_COLLECTIONS = new Set([
+function getRawSessionStorageItem(key: string): string | null {
+  try {
+    if (typeof sessionStorage !== 'undefined') {
+      return sessionStorage.getItem(key)
+    }
+    return nodeSessionStorageFallback.get(key) || null
+  } catch {
+    return nodeSessionStorageFallback.get(key) || null
+  }
+}
+
+
+
+// Structural / hierarchy collections: shared across ALL accounts.
+// These must be readable by any user regardless of which account wrote them.
+const SHARED_STRUCTURAL_COLLECTIONS = new Set([
+  'organizations',
+  'memberships',
+  'periods',
+  'structures',
+  'sections',
+  'personnels',
+  'roles',
+  'users',
+  'persons',
+  'account_holder_histories',
+])
+
+// Operational collections: centralized in shared operational store (indexed by organization_id).
+const SHARED_OPERATIONAL_COLLECTIONS = new Set([
   'programs',
   'agendas',
   'performances',
@@ -145,39 +155,270 @@ const PARTITIONED_COLLECTIONS = new Set([
   'audit_logs',
 ])
 
+const ALL_SHARED_COLLECTIONS = new Set([
+  ...SHARED_STRUCTURAL_COLLECTIONS,
+  ...SHARED_OPERATIONAL_COLLECTIONS,
+])
+
+// BroadcastChannel for cross-tab shared data sync
+let _structuralChannel: BroadcastChannel | null = null
+function getStructuralChannel(): BroadcastChannel | null {
+  if (typeof BroadcastChannel === 'undefined') return null
+  if (!_structuralChannel) {
+    _structuralChannel = new BroadcastChannel('filament_structural_sync')
+  }
+  return _structuralChannel
+}
+
+function broadcastStructuralChange(collection: string): void {
+  try {
+    getStructuralChannel()?.postMessage({ type: 'structural_change', collection })
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('filament_data_changed', { detail: { collection } }))
+    }
+  } catch {}
+}
+
+export interface QuarantineReportItem {
+  id: string
+  collection: string
+  source_key: string
+  item_id: string
+  user_id: string
+  reason: string
+  quarantined_at: string
+}
+
+// One-time migration: merge per-account structural data into shared store.
+// Reads known per-account keys and merges into the shared key.
+// NEVER deletes old data — old keys remain as backup.
+function migrateStructuralToShared(): void {
+  const SUPERADMIN_ID = '00000000-0000-0000-0000-000000000001'
+  try {
+    if (typeof localStorage === 'undefined') return
+    // Collect all account IDs present in localStorage
+    const accountIds = new Set<string>([SUPERADMIN_ID])
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i)
+      if (!k) continue
+      // Key pattern: filament_demo_v3_<uuid>_<collection>
+      const m = k.match(/^filament_demo_v3_([0-9a-f-]{36})_(.+)$/)
+      if (m) accountIds.add(m[1])
+    }
+
+    for (const col of SHARED_STRUCTURAL_COLLECTIONS) {
+      const sharedKey = `${DEMO_STORAGE_PREFIX}_shared_${col}`
+      // Load existing shared data (may already have been partially migrated)
+      let sharedData: any[] = []
+      const existingShared = getRawStorageItem(sharedKey)
+      if (existingShared) {
+        try { sharedData = JSON.parse(existingShared) ?? [] } catch {}
+      }
+      const sharedIds = new Set(sharedData.map((item: any) => item?.id).filter(Boolean))
+      let changed = false
+
+      for (const accountId of accountIds) {
+        const accountKey = `${DEMO_STORAGE_PREFIX}_${accountId}_${col}`
+        const raw = getRawStorageItem(accountKey)
+        if (!raw) continue
+        let accountData: any[] = []
+        try { accountData = JSON.parse(raw) ?? [] } catch { continue }
+        for (const item of accountData) {
+          if (item?.id && !sharedIds.has(item.id)) {
+            sharedData.push(item)
+            sharedIds.add(item.id)
+            changed = true
+          }
+        }
+      }
+
+      if (changed || !existingShared) {
+        setRawStorageItem(sharedKey, JSON.stringify(sharedData))
+      }
+    }
+  } catch (e) {
+    console.warn('[dataService] Structural migration warning:', e)
+  }
+}
+
+// Stage 3: Centralized Non-Destructive Operational Storage Migration
+// Migrates legacy per-account operational data (programs, agendas, tasks, etc.)
+// into centralized shared store indexed by organization_id.
+// Any record whose organization_id cannot be resolved is placed into quarantine.
+function migrateOperationalToSharedStore(): void {
+  try {
+    if (typeof localStorage === 'undefined') return
+    const versionMarkerKey = `${DEMO_STORAGE_PREFIX}_operational_migration_version`
+    const currentVersion = getRawStorageItem(versionMarkerKey)
+    if (currentVersion === '3.2.0') {
+      return // Idempotent: already executed
+    }
+
+    // Read shared memberships to resolve organization_id if a record is missing it
+    let sharedMems: OrganizationMembership[] = []
+    const rawMems = getRawStorageItem(`${DEMO_STORAGE_PREFIX}_shared_memberships`)
+    if (rawMems) {
+      try { sharedMems = JSON.parse(rawMems) || [] } catch {}
+    }
+
+    // Collect all account IDs present in localStorage keys
+    const accountIds = new Set<string>()
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i)
+      if (!k) continue
+      const m = k.match(/^filament_demo_v3_([0-9a-f-]{36})_(.+)$/)
+      if (m) accountIds.add(m[1])
+    }
+
+    // Load existing quarantine report
+    const quarantineReportKey = `${DEMO_STORAGE_PREFIX}_quarantine_report`
+    let quarantineReports: QuarantineReportItem[] = []
+    const rawReport = getRawStorageItem(quarantineReportKey)
+    if (rawReport) {
+      try { quarantineReports = JSON.parse(rawReport) || [] } catch {}
+    }
+    const quarantinedItemKeys = new Set(quarantineReports.map((r) => `${r.collection}_${r.item_id}`))
+
+    for (const col of SHARED_OPERATIONAL_COLLECTIONS) {
+      const sharedKey = `${DEMO_STORAGE_PREFIX}_shared_${col}`
+      let sharedData: any[] = []
+      const existingShared = getRawStorageItem(sharedKey)
+      if (existingShared) {
+        try { sharedData = JSON.parse(existingShared) || [] } catch {}
+      }
+      const sharedIds = new Set(sharedData.map((item: any) => item?.id).filter(Boolean))
+      let changed = false
+
+      // Quarantine store per collection
+      const quarantineStoreKey = `${DEMO_STORAGE_PREFIX}_quarantine_${col}`
+      let quarantineStoreData: any[] = []
+      const existingQuarantine = getRawStorageItem(quarantineStoreKey)
+      if (existingQuarantine) {
+        try { quarantineStoreData = JSON.parse(existingQuarantine) || [] } catch {}
+      }
+      const existingQuarantineIds = new Set(quarantineStoreData.map((item: any) => item?.id).filter(Boolean))
+      let quarantineStoreChanged = false
+
+      for (const accountId of accountIds) {
+        const accountKey = `${DEMO_STORAGE_PREFIX}_${accountId}_${col}`
+        const raw = getRawStorageItem(accountKey)
+        if (!raw) continue
+        let accountData: any[] = []
+        try { accountData = JSON.parse(raw) || [] } catch { continue }
+
+        for (const item of accountData) {
+          if (!item || !item.id) continue
+          if (sharedIds.has(item.id) || existingQuarantineIds.has(item.id)) {
+            continue // Skip duplicates
+          }
+
+          // Resolving ownership
+          let targetOrgId = item.organization_id
+          // 1. Gunakan record.organization_id jika tersedia
+          if (!targetOrgId || typeof targetOrgId !== 'string' || targetOrgId.trim() === '') {
+            // 2. Jika tidak tersedia, gunakan membership user pemilik storage
+            const activeMem = sharedMems.find((m) => m.user_id === accountId && m.status === 'active')
+            if (activeMem && activeMem.organization_id) {
+              targetOrgId = activeMem.organization_id
+              item.organization_id = targetOrgId
+            }
+          }
+
+          if (targetOrgId && typeof targetOrgId === 'string' && targetOrgId.trim() !== '') {
+            sharedData.push(item)
+            sharedIds.add(item.id)
+            changed = true
+          } else {
+            // 3. Masukkan ke quarantine/unresolved migration store
+            quarantineStoreData.push(item)
+            existingQuarantineIds.add(item.id)
+            quarantineStoreChanged = true
+
+            const qKey = `${col}_${item.id}`
+            if (!quarantinedItemKeys.has(qKey)) {
+              quarantinedItemKeys.add(qKey)
+              quarantineReports.push({
+                id: generateUUID(),
+                collection: col,
+                source_key: accountKey,
+                item_id: item.id,
+                user_id: accountId,
+                reason: 'Data tidak memiliki organization_id dan akun tidak memiliki active membership untuk menentukan unit owner',
+                quarantined_at: new Date().toISOString(),
+              })
+            }
+          }
+        }
+      }
+
+      if (changed || !existingShared) {
+        setRawStorageItem(sharedKey, JSON.stringify(sharedData))
+      }
+      if (quarantineStoreChanged) {
+        setRawStorageItem(quarantineStoreKey, JSON.stringify(quarantineStoreData))
+      }
+    }
+
+    setRawStorageItem(quarantineReportKey, JSON.stringify(quarantineReports))
+    setRawStorageItem(versionMarkerKey, '3.2.0')
+  } catch (e) {
+    console.warn('[dataService] Operational migration warning:', e)
+  }
+}
+
 function resolveCurrentAccountId(explicitUser?: User | null): string {
   if (explicitUser?.id) return explicitUser.id
   try {
-    const stored = getRawStorageItem('filament_bakid_auth_user')
+    let stored = getRawSessionStorageItem('filament_bakid_auth_user')
+    if (!stored) {
+      stored = getRawStorageItem('filament_bakid_auth_user')
+    }
     if (stored) {
       const parsed = JSON.parse(stored)
       if (parsed?.id) return parsed.id
     }
   } catch {}
-  return '00000000-0000-0000-0000-000000000001' // Default superadmin account ID
+  return ''
 }
 
 let activeAccountId = resolveCurrentAccountId()
 
 function getAccountStorage<T>(accountId: string, collection: string, defaultValue: T): T {
-  if (!accountCache.has(accountId)) {
-    accountCache.set(accountId, new Map())
+  const isShared = ALL_SHARED_COLLECTIONS.has(collection)
+
+  // Shared collections use a single shared cache key regardless of account
+  const cacheAccountKey = isShared ? '__shared__' : (accountId || 'anonymous')
+  if (!accountCache.has(cacheAccountKey)) {
+    accountCache.set(cacheAccountKey, new Map())
   }
-  const accMap = accountCache.get(accountId)!
+  const accMap = accountCache.get(cacheAccountKey)!
   if (accMap.has(collection)) {
     return accMap.get(collection)
   }
 
-  const isPartitioned = PARTITIONED_COLLECTIONS.has(collection)
-  const primaryKey = isPartitioned
-    ? `${DEMO_STORAGE_PREFIX}_${accountId}_${collection}`
-    : `${DEMO_STORAGE_PREFIX}_shared_${collection}`
+  const primaryKey = isShared
+    ? `${DEMO_STORAGE_PREFIX}_shared_${collection}`
+    : `${DEMO_STORAGE_PREFIX}_${accountId}_${collection}`
 
   const raw = getRawStorageItem(primaryKey)
   if (raw !== null) {
     try {
       const parsed = JSON.parse(raw)
       if (parsed !== null && parsed !== undefined) {
+        // Special case: if shared users or roles collection is an empty array, seed with initial defaults
+        if (collection === 'users' && Array.isArray(parsed) && parsed.length === 0) {
+          const seededUsers = JSON.parse(JSON.stringify(initialUsers))
+          setRawStorageItem(primaryKey, JSON.stringify(seededUsers))
+          accMap.set(collection, seededUsers)
+          return seededUsers as T
+        }
+        if (collection === 'roles' && Array.isArray(parsed) && parsed.length === 0) {
+          const seededRoles = JSON.parse(JSON.stringify(initialRoles))
+          setRawStorageItem(primaryKey, JSON.stringify(seededRoles))
+          accMap.set(collection, seededRoles)
+          return seededRoles as T
+        }
+
         accMap.set(collection, parsed)
         return parsed
       }
@@ -188,39 +429,80 @@ function getAccountStorage<T>(accountId: string, collection: string, defaultValu
     }
   }
 
-  // Check legacy key for initial backward-compatible migration on default account
-  const legacyKey = `${LEGACY_STORAGE_PREFIX}_${collection}`
-  const legacyRaw = getRawStorageItem(legacyKey)
-  if (legacyRaw !== null && accountId === '00000000-0000-0000-0000-000000000001') {
-    try {
-      const parsed = JSON.parse(legacyRaw)
-      if (parsed !== null && parsed !== undefined) {
-        setRawStorageItem(primaryKey, JSON.stringify(parsed))
-        accMap.set(collection, parsed)
-        return parsed
-      }
-    } catch {}
+  // Check legacy key for initial backward-compatible migration on default account (shared non-operational collections only)
+  if (!isShared) {
+    const legacyKey = `${LEGACY_STORAGE_PREFIX}_${collection}`
+    const legacyRaw = getRawStorageItem(legacyKey)
+    if (legacyRaw !== null && accountId === '00000000-0000-0000-0000-000000000001') {
+      try {
+        const parsed = JSON.parse(legacyRaw)
+        if (parsed !== null && parsed !== undefined) {
+          setRawStorageItem(primaryKey, JSON.stringify(parsed))
+          accMap.set(collection, parsed)
+          return parsed
+        }
+      } catch {}
+    }
   }
 
-  // Initial Seed: clone defaultValue deeply so accounts cannot mutate each other's seed objects
-  const seeded = JSON.parse(JSON.stringify(defaultValue))
+  // Operational collections and organizational structural stores default to empty array [].
+  // Collections with initial master data (users, roles, categories, etc.) use defaultValue.
+  const collectionsDefaultingToEmpty = new Set([
+    'organizations',
+    'memberships',
+    'periods',
+    'structures',
+    'sections',
+    'personnels',
+    'persons',
+    'account_holder_histories',
+    'programs',
+    'agendas',
+    'performances',
+    'budgets',
+    'transactions',
+    'reports',
+    'tasks',
+    'notifications',
+    'audit_logs',
+    // Non-org collections — semua default kosong, diisi manual via UI
+    'categories',
+    'brands',
+    'products',
+    'category_products',
+    'customers',
+    'orders',
+    'payments',
+    'comments',
+    'addresses',
+    'addressables',
+  ])
+  const fallbackValue = collectionsDefaultingToEmpty.has(collection) ? ([] as unknown as T) : defaultValue
+  const seeded = JSON.parse(JSON.stringify(fallbackValue))
   setRawStorageItem(primaryKey, JSON.stringify(seeded))
   accMap.set(collection, seeded)
   return seeded
 }
 
 function setAccountStorage<T>(accountId: string, collection: string, value: T): void {
-  if (!accountCache.has(accountId)) {
-    accountCache.set(accountId, new Map())
-  }
-  accountCache.get(accountId)!.set(collection, value)
+  const isShared = ALL_SHARED_COLLECTIONS.has(collection)
 
-  const isPartitioned = PARTITIONED_COLLECTIONS.has(collection)
-  const primaryKey = isPartitioned
-    ? `${DEMO_STORAGE_PREFIX}_${accountId}_${collection}`
-    : `${DEMO_STORAGE_PREFIX}_shared_${collection}`
+  const cacheAccountKey = isShared ? '__shared__' : (accountId || 'anonymous')
+  if (!accountCache.has(cacheAccountKey)) {
+    accountCache.set(cacheAccountKey, new Map())
+  }
+  accountCache.get(cacheAccountKey)!.set(collection, value)
+
+  const primaryKey = isShared
+    ? `${DEMO_STORAGE_PREFIX}_shared_${collection}`
+    : `${DEMO_STORAGE_PREFIX}_${accountId}_${collection}`
 
   setRawStorageItem(primaryKey, JSON.stringify(value))
+
+  // Notify other tabs about shared changes
+  if (isShared) {
+    broadcastStructuralChange(collection)
+  }
 }
 
 function getStorage<T>(key: string, defaultValue: T): T {
@@ -238,52 +520,96 @@ let localUsers: User[] = getStorage('users', initialUsers).map((u) => {
     avatar_url: u.avatar_url || init?.avatar_url,
   }
 })
-let localCategories: Category[] = getStorage('categories', initialCategories)
-let localBrands: Brand[] = getStorage('brands', initialBrands)
-let localProducts: Product[] = getStorage('products', initialProducts)
-let localCategoryProducts: CategoryProduct[] = getStorage('category_products', initialCategoryProducts)
-let localCustomers: Customer[] = getStorage('customers', initialCustomers)
-let localOrders: Order[] = getStorage('orders', initialOrders)
-let localPayments: Payment[] = getStorage('payments', initialPayments)
-let localComments: Comment[] = getStorage('comments', initialComments)
-let localAddresses: Address[] = getStorage('addresses', initialAddresses)
-let localAddressables: Addressable[] = getStorage('addressables', initialAddressables)
+let localPersons: Person[] = getStorage('persons', [])
+let localAccountHolderHistories: AccountHolderHistory[] = getStorage('account_holder_histories', [])
+let localCategories: Category[] = getStorage('categories', [])
+let localBrands: Brand[] = getStorage('brands', [])
+let localProducts: Product[] = getStorage('products', [])
+let localCategoryProducts: CategoryProduct[] = getStorage('category_products', [])
+let localCustomers: Customer[] = getStorage('customers', [])
+let localOrders: Order[] = getStorage('orders', [])
+let localPayments: Payment[] = getStorage('payments', [])
+let localComments: Comment[] = getStorage('comments', [])
+let localAddresses: Address[] = getStorage('addresses', [])
+let localAddressables: Addressable[] = getStorage('addressables', [])
 
-// Workflow Ecosystem Stores
-let localOrganizations: Organization[] = getStorage('organizations', initialOrganizations)
-let localPeriods: OrganizationPeriod[] = getStorage('periods', initialPeriods)
+// Workflow Ecosystem Stores: ALWAYS start completely empty from 0 (Empty Demo State)
+let localOrganizations: Organization[] = getStorage('organizations', [])
+let localPeriods: OrganizationPeriod[] = getStorage('periods', [])
 let localRoles: RoleEntity[] = getStorage('roles', initialRoles)
-let localMemberships: OrganizationMembership[] = getStorage('memberships', initialMemberships)
-let localStructures: Structure[] = getStorage('structures', initialStructures)
-let localSections: Section[] = getStorage('sections', initialSections)
-let localPersonnels: Personnel[] = getStorage('personnels', initialPersonnels)
-let localPrograms: Program[] = getStorage('programs', initialPrograms)
-let localAgendas: Agenda[] = getStorage('agendas', initialAgendas)
-let localPerformances: Performance[] = getStorage('performances', initialPerformances)
-let localBudgets: Budget[] = getStorage('budgets', initialBudgets)
-let localTransactions: Transaction[] = getStorage('transactions', initialTransactions)
-let localReports: Report[] = getStorage('reports', initialReports)
-let localTasks: Task[] = getStorage('tasks', initialTasks)
-let localNotifications: Notification[] = getStorage('notifications', initialNotifications)
-let localAuditLogs: AuditLog[] = getStorage('audit_logs', initialAuditLogs)
+let localMemberships: OrganizationMembership[] = getStorage('memberships', [])
+let localStructures: Structure[] = getStorage('structures', [])
+let localSections: Section[] = getStorage('sections', [])
+let localPersonnels: Personnel[] = getStorage('personnels', [])
+
+// Operational Collections: ALWAYS start completely empty from 0 (Centralized Shared Store)
+let localPrograms: Program[] = getStorage('programs', [])
+let localAgendas: Agenda[] = getStorage('agendas', [])
+let localPerformances: Performance[] = getStorage('performances', [])
+let localBudgets: Budget[] = getStorage('budgets', [])
+let localTransactions: Transaction[] = getStorage('transactions', [])
+let localReports: Report[] = getStorage('reports', [])
+let localTasks: Task[] = getStorage('tasks', [])
+let localNotifications: Notification[] = getStorage('notifications', [])
+let localAuditLogs: AuditLog[] = getStorage('audit_logs', [])
+
+// Run migrations once at module load
+migrateStructuralToShared()
+migrateOperationalToSharedStore()
+
+function reloadSharedStructuralCollections(): void {
+  // Invalidate shared cache so next read fetches fresh from localStorage
+  const sharedCache = accountCache.get('__shared__')
+  if (sharedCache) {
+    for (const col of ALL_SHARED_COLLECTIONS) {
+      sharedCache.delete(col)
+    }
+  }
+  // Reload into module-level variables (both structural and operational)
+  localOrganizations = getAccountStorage('__shared__', 'organizations', [])
+  localPeriods = getAccountStorage('__shared__', 'periods', [])
+  localMemberships = getAccountStorage('__shared__', 'memberships', [])
+  localStructures = getAccountStorage('__shared__', 'structures', [])
+  localSections = getAccountStorage('__shared__', 'sections', [])
+  localPersonnels = getAccountStorage('__shared__', 'personnels', [])
+  localRoles = getAccountStorage('__shared__', 'roles', initialRoles)
+  localUsers = getAccountStorage('__shared__', 'users', initialUsers)
+  localPersons = getAccountStorage('__shared__', 'persons', [])
+  localAccountHolderHistories = getAccountStorage('__shared__', 'account_holder_histories', [])
+
+  localPrograms = getAccountStorage('__shared__', 'programs', [])
+  localAgendas = getAccountStorage('__shared__', 'agendas', [])
+  localPerformances = getAccountStorage('__shared__', 'performances', [])
+  localBudgets = getAccountStorage('__shared__', 'budgets', [])
+  localTransactions = getAccountStorage('__shared__', 'transactions', [])
+  localReports = getAccountStorage('__shared__', 'reports', [])
+  localTasks = getAccountStorage('__shared__', 'tasks', [])
+  localNotifications = getAccountStorage('__shared__', 'notifications', [])
+  localAuditLogs = getAccountStorage('__shared__', 'audit_logs', [])
+}
+
+// Listen for cross-tab shared changes and reload
+try {
+  getStructuralChannel()?.addEventListener('message', (event) => {
+    if (event.data?.type === 'structural_change' || event.data?.type === 'shared_change') {
+      reloadSharedStructuralCollections()
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('filament_data_changed', { detail: { collection: event.data?.collection } })
+        )
+      }
+    }
+  })
+} catch {}
 
 function loadAccountData(accountId: string): void {
   activeAccountId = accountId
-
-  localPrograms = getAccountStorage(accountId, 'programs', initialPrograms)
-  localAgendas = getAccountStorage(accountId, 'agendas', initialAgendas)
-  localPerformances = getAccountStorage(accountId, 'performances', initialPerformances)
-  localBudgets = getAccountStorage(accountId, 'budgets', initialBudgets)
-  localTransactions = getAccountStorage(accountId, 'transactions', initialTransactions)
-  localReports = getAccountStorage(accountId, 'reports', initialReports)
-  localTasks = getAccountStorage(accountId, 'tasks', initialTasks)
-  localNotifications = getAccountStorage(accountId, 'notifications', initialNotifications)
-  localAuditLogs = getAccountStorage(accountId, 'audit_logs', initialAuditLogs)
+  reloadSharedStructuralCollections()
 }
 
 function ensureAccountContext(user?: User | null): void {
   const targetId = resolveCurrentAccountId(user)
-  if (targetId !== activeAccountId) {
+  if (targetId && targetId !== activeAccountId) {
     loadAccountData(targetId)
   }
 }
@@ -363,21 +689,125 @@ export const dataService = {
   // DEMO ACCOUNT PERSISTENCE CONTROLS
   // --------------------------------------------------------------------------
   setActiveAccount(userOrId?: User | string | null): void {
-    const id = typeof userOrId === 'string' ? userOrId : resolveCurrentAccountId(userOrId)
+    if (!userOrId) {
+      activeAccountId = ''
+      loadAccountData('')
+      return
+    }
+    const id = typeof userOrId === 'string' ? userOrId : (userOrId.id || resolveCurrentAccountId(userOrId))
     loadAccountData(id)
   },
   getActiveAccountId(): string {
     return activeAccountId
   },
+  /** Force-reload structural collections (organizations, memberships, etc.) from shared store.
+   *  Call this after switching accounts or when cross-tab sync is needed. */
+  reloadSharedStructural(): void {
+    reloadSharedStructuralCollections()
+  },
   resetDemoData(accountId?: string): void {
-    const target = accountId || activeAccountId
-    PARTITIONED_COLLECTIONS.forEach((col) => {
-      const key = `${DEMO_STORAGE_PREFIX}_${target}_${col}`
-      removeRawStorageItem(key)
-    })
-    accountCache.delete(target)
-    if (target === activeAccountId) {
-      loadAccountData(target)
+    if (accountId) {
+      SHARED_OPERATIONAL_COLLECTIONS.forEach((col: string) => {
+        const key = `${DEMO_STORAGE_PREFIX}_${accountId}_${col}`
+        removeRawStorageItem(key)
+      })
+      accountCache.delete(accountId)
+      if (accountId === activeAccountId) {
+        loadAccountData(accountId)
+      }
+    } else {
+      // Clear for current account and clear any other tracked account in cache
+      SHARED_OPERATIONAL_COLLECTIONS.forEach((col: string) => {
+        const key = `${DEMO_STORAGE_PREFIX}_${activeAccountId}_${col}`
+        removeRawStorageItem(key)
+        removeRawStorageItem(`${DEMO_STORAGE_PREFIX}_shared_${col}`)
+      })
+      // Also inspect localStorage if browser environment to clear all demo keys
+      try {
+        if (typeof localStorage !== 'undefined') {
+          const keysToRemove: string[] = []
+          for (let i = 0; i < localStorage.length; i++) {
+            const k = localStorage.key(i)
+            if (k && k.startsWith(`${DEMO_STORAGE_PREFIX}_`)) {
+              for (const col of SHARED_OPERATIONAL_COLLECTIONS) {
+                if (k.endsWith(`_${col}`)) {
+                  keysToRemove.push(k)
+                  break
+                }
+              }
+            }
+          }
+          keysToRemove.forEach((k) => localStorage.removeItem(k))
+          localStorage.removeItem('filament_bakid_active_org_id')
+        }
+      } catch {}
+
+      accountCache.clear()
+      loadAccountData(activeAccountId)
+    }
+  },
+  /**
+   * Pembersihan menyeluruh (Clean Slate):
+   * Menghapus semua mock data di localStorage & session,
+   * dan menyisakan HANYA 1 akun Superadmin Master default serta default roles.
+   */
+  clearAllMockData(): void {
+    try {
+      if (typeof localStorage !== 'undefined') {
+        const keysToRemove: string[] = []
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i)
+          if (!k) continue
+          if (
+            k.startsWith(DEMO_STORAGE_PREFIX) ||
+            k.startsWith(LEGACY_STORAGE_PREFIX) ||
+            k.startsWith('filament_bakid_')
+          ) {
+            keysToRemove.push(k)
+          }
+        }
+        keysToRemove.forEach((k) => localStorage.removeItem(k))
+      }
+      if (typeof sessionStorage !== 'undefined') {
+        sessionStorage.removeItem('filament_bakid_active_org_id')
+        sessionStorage.removeItem('filament_bakid_logged_out')
+      }
+    } catch {}
+
+    accountCache.clear()
+    nodeStorageFallback.clear()
+    nodeSessionStorageFallback.clear()
+
+    // Reseed akun master Superadmin & roles default
+    const masterSuperadmin = JSON.parse(JSON.stringify(initialUsers))
+    const masterRoles = JSON.parse(JSON.stringify(initialRoles))
+
+    setRawStorageItem(`${DEMO_STORAGE_PREFIX}_shared_users`, JSON.stringify(masterSuperadmin))
+    setRawStorageItem(`${DEMO_STORAGE_PREFIX}_shared_roles`, JSON.stringify(masterRoles))
+
+    // Reset in-memory variables untuk non-shared collections ke kosong
+    localCategories = []
+    localBrands = []
+    localProducts = []
+    localCategoryProducts = []
+    localCustomers = []
+    localOrders = []
+    localPayments = []
+    localComments = []
+    localAddresses = []
+    localAddressables = []
+
+    // Set current active user to Superadmin
+    activeAccountId = masterSuperadmin[0]?.id || ''
+    try {
+      if (typeof sessionStorage !== 'undefined' && masterSuperadmin[0]) {
+        sessionStorage.setItem('filament_bakid_auth_user', JSON.stringify(masterSuperadmin[0]))
+      }
+    } catch {}
+
+    reloadSharedStructuralCollections()
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('filament_structural_change', { detail: { collection: 'all' } }))
     }
   },
 
@@ -399,7 +829,14 @@ export const dataService = {
       if (!error && data) return data as User
     }
     await delay()
-    return localUsers.find((u) => u.id === id) || null
+    const u = localUsers.find((u) => u.id === id)
+    if (!u) return null
+    const person = u.holder_person_id ? localPersons.find((p) => p.id === u.holder_person_id) : undefined
+    return {
+      ...u,
+      holder: person,
+      holder_name: person?.name || u.holder_name,
+    }
   },
 
   async getUserByEmailOrUsername(identifier: string): Promise<User | null> {
@@ -1235,7 +1672,7 @@ export const dataService = {
           type: 'organization',
           title: o.name,
           subtitle: `Kode: ${o.code} | Status: ${o.status}`,
-          url: '/organizations',
+          url: '/structures',
           badge: o.status,
         })
       }
@@ -1288,16 +1725,113 @@ export const dataService = {
     user?: User | null
   ): Promise<Organization> {
     verifyAccess(user, 'Organization', 'create')
+
+    // Stage 8: Structural create gate — only Ketua Pengurus may add hierarchy nodes
+    const parentOrg = data.parent_id ? localOrganizations.find((o) => o.id === data.parent_id) : null
+    assertCanCreateOrganizationStructure(
+      user,
+      data.unit_type ?? null,
+      data.parent_id ? (parentOrg?.unit_type ?? null) : null,
+      localOrganizations
+    )
+
     await delay(120)
     const newOrg: Organization = {
       ...data,
-      id: generateUUID(),
+      id: (data as unknown as { id?: string }).id || generateUUID(),
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }
     localOrganizations = [newOrg, ...localOrganizations]
     setStorage('organizations', localOrganizations)
+
+    // AUTO-PROVISIONING: Buat otomatis Struktur aktif untuk organisasi baru ini
+    const currentYear = new Date().getFullYear()
+    const autoStructure: Structure = {
+      id: generateUUID(),
+      organization_id: newOrg.id,
+      period_name: `Kepengurusan ${currentYear} - ${currentYear + 2}`,
+      name: `Struktur ${newOrg.name}`,
+      start_year: currentYear,
+      end_year: currentYear + 2,
+      is_active: true,
+      status: 'active',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }
+    localStructures = [autoStructure, ...localStructures]
+    setStorage('structures', localStructures)
+
+    // AUTO-PROVISIONING: Buat otomatis Periode Kepengurusan aktif untuk organisasi baru ini
+    const autoPeriod: OrganizationPeriod = {
+      id: generateUUID(),
+      organization_id: newOrg.id,
+      name: `Periode ${currentYear} - ${currentYear + 2}`,
+      period_start: `${currentYear}-01-01`,
+      period_end: `${currentYear + 2}-12-31`,
+      is_active: true,
+      status: 'active',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }
+    localPeriods = [autoPeriod, ...localPeriods]
+    setStorage('periods', localPeriods)
+
+    // AUTO-PROVISIONING: Buat otomatis Seksi & Posisi Personel (Jabatan) default
+    // agar posisi ini langsung muncul di penempatan akun, bagan, dan penugasan
+    const autoSection: Section = {
+      id: generateUUID(),
+      structure_id: autoStructure.id,
+      organization_id: newOrg.id,
+      name: `Bidang ${newOrg.name}`,
+      code: `SEC-${newOrg.code || 'JBT'}`,
+      description: newOrg.description || `Bidang tugas operasional ${newOrg.name}`,
+      created_at: new Date().toISOString(),
+    }
+    localSections = [...localSections, autoSection]
+    setStorage('sections', localSections)
+
+    const autoPersonnel: Personnel = {
+      id: generateUUID(),
+      section_id: autoSection.id,
+      organization_id: newOrg.id,
+      period_id: autoPeriod.id,
+      role_title: newOrg.name,
+      position: newOrg.name,
+      node_type: (newOrg.unit_type as any) === 'kepala_pengurus' ? 'ketua' : 'jabatan',
+      tupoksi: newOrg.description || `Pemegang amanah dan pimpinan ${newOrg.name}`,
+      status: 'active',
+      created_at: new Date().toISOString(),
+    }
+    localPersonnels = [autoPersonnel, ...localPersonnels]
+    setStorage('personnels', localPersonnels)
+
+    // AUTO-MEMBERSHIP: Berikan membership otomatis kepada pembuat agar organisasi langsung muncul di tenant & scope
+    if (user?.id) {
+      const existingMem = localMemberships.find(
+        (m) => m.user_id === user.id && m.organization_id === newOrg.id
+      )
+      if (!existingMem) {
+        const creatorMembership: OrganizationMembership = {
+          id: generateUUID(),
+          user_id: user.id,
+          organization_id: newOrg.id,
+          role_id: user.role === 'superadmin' ? 'role-superadmin' : 'role-admin-org',
+          level: 'admin',
+          status: 'active',
+          created_at: new Date().toISOString(),
+          joined_at: new Date().toISOString(),
+        }
+        localMemberships = [creatorMembership, ...localMemberships]
+        setStorage('memberships', localMemberships)
+      }
+    }
+
     logAudit(user, 'create', 'Organization', newOrg.id, newOrg.id, undefined, newOrg as unknown as Record<string, unknown>)
+    reloadSharedStructuralCollections()
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('filament_structural_change', { detail: { collection: 'organizations' } }))
+    }
     return newOrg
   },
 
@@ -1317,6 +1851,27 @@ export const dataService = {
       updated_at: new Date().toISOString(),
     }
     setStorage('organizations', localOrganizations)
+
+    // Sinkronkan nama posisi personel default jika nama organisasi diubah
+    if (data.name) {
+      let personnelChanged = false
+      localPersonnels = localPersonnels.map((p) => {
+        if (p.organization_id === id && (p.position === oldVal.name || p.role_title === oldVal.name)) {
+          personnelChanged = true
+          return {
+            ...p,
+            position: data.name!,
+            role_title: data.name!,
+            updated_at: new Date().toISOString(),
+          }
+        }
+        return p
+      })
+      if (personnelChanged) {
+        setStorage('personnels', localPersonnels)
+      }
+    }
+
     logAudit(user, 'update', 'Organization', id, id, oldVal as unknown as Record<string, unknown>, localOrganizations[index] as unknown as Record<string, unknown>)
     return localOrganizations[index]
   },
@@ -1327,6 +1882,13 @@ export const dataService = {
     const oldVal = localOrganizations.find((o) => o.id === id)
     localOrganizations = localOrganizations.filter((o) => o.id !== id)
     setStorage('organizations', localOrganizations)
+
+    // Bersihkan personel dan seksi yang terhubung
+    localPersonnels = localPersonnels.filter((p) => p.organization_id !== id)
+    setStorage('personnels', localPersonnels)
+    localSections = localSections.filter((s) => s.organization_id !== id)
+    setStorage('sections', localSections)
+
     logAudit(user, 'delete', 'Organization', id, id, oldVal as unknown as Record<string, unknown>, undefined)
   },
 
@@ -1466,10 +2028,14 @@ export const dataService = {
           resolvedLevel = 'anggota'
         }
       }
+      const u = localUsers.find((u) => u.id === m.user_id)
+      const person = u?.holder_person_id ? localPersons.find((p) => p.id === u.holder_person_id) : undefined
+      const resolvedUser = u ? { ...u, holder: person, holder_name: person?.name || u.holder_name } : undefined
+
       return {
         ...m,
         level: resolvedLevel,
-        user: localUsers.find((u) => u.id === m.user_id),
+        user: resolvedUser,
         role,
         organization: localOrganizations.find((o) => o.id === m.organization_id),
       }
@@ -1529,6 +2095,50 @@ export const dataService = {
     localMemberships = localMemberships.filter((m) => m.id !== id)
     setStorage('memberships', localMemberships)
     logAudit(user, 'delete', 'Admin', id, mem.organization_id, mem as unknown as Record<string, unknown>, undefined)
+  },
+
+  async deleteAccount(userId: string, user?: User | null): Promise<void> {
+    verifySuperadmin(user)
+    await delay(120)
+    const targetUser = localUsers.find((u) => u.id === userId)
+    if (!targetUser) throw new Error('Pengguna tidak ditemukan')
+    if (targetUser.is_superadmin || targetUser.role === 'superadmin') {
+      throw new Error('Akun Superadmin tidak dapat dihapus')
+    }
+    // Hapus memberships terkait
+    localMemberships = localMemberships.filter((m) => m.user_id !== userId)
+    setStorage('memberships', localMemberships)
+
+    // Hapus user
+    localUsers = localUsers.filter((u) => u.id !== userId)
+    setStorage('users', localUsers)
+    logAudit(user, 'delete', 'Admin', userId, undefined, targetUser as unknown as Record<string, unknown>, undefined)
+  },
+
+  async deleteAccounts(userIds: string[], user?: User | null): Promise<{ deletedCount: number; skippedCount: number }> {
+    verifySuperadmin(user)
+    await delay(150)
+    const validUserIds = userIds.filter((id) => {
+      const u = localUsers.find((item) => item.id === id)
+      return u && !u.is_superadmin && u.role !== 'superadmin' && u.id !== user?.id
+    })
+
+    if (validUserIds.length === 0) {
+      throw new Error('Tidak ada akun yang dapat dihapus (Akun Superadmin atau akun Anda sendiri dilindungi).')
+    }
+
+    const validIdSet = new Set(validUserIds)
+    localMemberships = localMemberships.filter((m) => !validIdSet.has(m.user_id))
+    setStorage('memberships', localMemberships)
+
+    localUsers = localUsers.filter((u) => !validIdSet.has(u.id))
+    setStorage('users', localUsers)
+
+    logAudit(user, 'delete', 'Admin', validUserIds.join(','), undefined, { count: validUserIds.length }, undefined)
+    return {
+      deletedCount: validUserIds.length,
+      skippedCount: userIds.length - validUserIds.length,
+    }
   },
 
   async moveUserOrganization(
@@ -1695,7 +2305,29 @@ export const dataService = {
   async getStructures(organizationId: string, user?: User | null): Promise<Structure[]> {
     await delay(100)
     verifyAccess(user, 'Structure', 'viewAny', organizationId)
-    const structures = localStructures.filter((s) => s.organization_id === organizationId)
+    let structures = localStructures.filter((s) => s.organization_id === organizationId)
+
+    // AUTO-PROVISIONING: Jika Organisasi belum memiliki record Struktur aktif, buat otomatis
+    if (structures.length === 0 && organizationId) {
+      const targetOrg = localOrganizations.find((o) => o.id === organizationId)
+      const currentYear = new Date().getFullYear()
+      const autoStructure: Structure = {
+        id: generateUUID(),
+        organization_id: organizationId,
+        period_name: `Kepengurusan ${currentYear} - ${currentYear + 2}`,
+        name: `Struktur ${targetOrg?.name || 'Organisasi'}`,
+        start_year: currentYear,
+        end_year: currentYear + 2,
+        is_active: true,
+        status: 'active',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }
+      localStructures = [autoStructure, ...localStructures]
+      setStorage('structures', localStructures)
+      structures = [autoStructure]
+    }
+
     return structures.map((s) => ({
       ...s,
       sections: localSections.filter((sec) => sec.structure_id === s.id),
@@ -1755,6 +2387,26 @@ export const dataService = {
     await delay(80)
     verifyAccess(user, 'Structure', 'viewAny', organizationId)
     let filtered = localSections.filter((s) => s.organization_id === organizationId)
+
+    // Auto-reconciliation: Jika organisasi/jabatan belum memiliki seksi (misal baru dibuat atau data lama),
+    // otomatis buatkan seksi default "Pelaksana Program" agar pengguna tidak terblokir saat membuat program kerja
+    if (filtered.length === 0 && organizationId) {
+      const org = localOrganizations.find((o) => o.id === organizationId)
+      const struct = localStructures.find((s) => s.organization_id === organizationId)
+      const autoSec: Section = {
+        id: generateUUID(),
+        structure_id: struct?.id || generateUUID(),
+        organization_id: organizationId,
+        name: org ? `Pelaksana ${org.name}` : 'Seksi Operasional & Pelaksana',
+        code: `SEC-${org?.code || 'OPS'}`,
+        description: 'Seksi pelaksana program kerja dan kegiatan operasional',
+        created_at: new Date().toISOString(),
+      }
+      localSections = [...localSections, autoSec]
+      setStorage('sections', localSections)
+      filtered = [autoSec]
+    }
+
     if (structureId) {
       filtered = filtered.filter((s) => s.structure_id === structureId)
     }
@@ -1812,10 +2464,41 @@ export const dataService = {
   // --------------------------------------------------------------------------
   // 5. PERSONEL (Tupoksi & Penugasan)
   // --------------------------------------------------------------------------
-  async getPersonnels(organizationId: string, sectionId?: string, user?: User | null): Promise<Personnel[]> {
+  async getPersonnels(organizationId?: string, sectionId?: string, user?: User | null): Promise<Personnel[]> {
     await delay(80)
-    verifyAccess(user, 'Structure', 'viewAny', organizationId)
-    let filtered = localPersonnels.filter((p) => p.organization_id === organizationId)
+    if (organizationId) {
+      verifyAccess(user, 'Structure', 'viewAny', organizationId)
+    }
+
+    // Auto-reconciliation: Jika ada organisasi yang belum memiliki personel (misal dibuat sebelum auto-provisioning),
+    // buatkan personel secara otomatis sehingga posisi jabatan langsung dapat dipilih di formulir akun & penempatan
+    let personnelsUpdated = false
+    const existingOrgIds = new Set(localPersonnels.map((p) => p.organization_id).filter(Boolean))
+    for (const org of localOrganizations) {
+      if (!existingOrgIds.has(org.id)) {
+        const autoPrs: Personnel = {
+          id: generateUUID(),
+          section_id: 'sec-pimpinan',
+          organization_id: org.id,
+          role_title: org.name,
+          position: org.name,
+          node_type: (org.unit_type as any) === 'kepala_pengurus' ? 'ketua' : 'jabatan',
+          tupoksi: org.description || `Pemegang amanah dan pimpinan ${org.name}`,
+          status: 'active',
+          created_at: org.created_at || new Date().toISOString(),
+        }
+        localPersonnels = [autoPrs, ...localPersonnels]
+        existingOrgIds.add(org.id)
+        personnelsUpdated = true
+      }
+    }
+    if (personnelsUpdated) {
+      setStorage('personnels', localPersonnels)
+    }
+
+    let filtered = organizationId
+      ? localPersonnels.filter((p) => p.organization_id === organizationId)
+      : [...localPersonnels]
     if (sectionId) {
       filtered = filtered.filter((p) => p.section_id === sectionId)
     }
@@ -1956,6 +2639,7 @@ export const dataService = {
       .filter((p) => targetSet.has(p.organization_id))
       .map((p) => ({
         ...p,
+        duration_type: p.duration_type || 'terbatas',
         section: localSections.find((s) => s.id === p.section_id),
         agendas: localAgendas.filter((a) => a.program_id === p.id),
         performances: localPerformances.filter((perf) => perf.program_id === p.id),
@@ -1970,9 +2654,10 @@ export const dataService = {
     await delay(80)
     const program = localPrograms.find((p) => p.id === id)
     if (!program) return null
-    verifyAccess(user, 'Program', 'view', program.organization_id)
+    verifyAccess(user, 'Program', 'view', program.organization_id, 'descendants')
     return {
       ...program,
+      duration_type: program.duration_type || 'terbatas',
       section: localSections.find((s) => s.id === program.section_id),
       agendas: localAgendas.filter((a) => a.program_id === program.id),
       performances: localPerformances.filter((perf) => perf.program_id === program.id),
@@ -1999,9 +2684,24 @@ export const dataService = {
       )
     }
 
+    // Validation: duration_type and date constraints
+    const durationType = data.duration_type || 'terbatas'
+    if (durationType === 'terbatas' || durationType === 'jangka_panjang') {
+      if (!data.start_date) throw new Error('Tanggal mulai pelaksanaan wajib diisi.')
+      if (!data.end_date) throw new Error('Tanggal selesai pelaksanaan wajib diisi.')
+      if (data.end_date < data.start_date) {
+        throw new Error('Tanggal selesai tidak boleh mendahului tanggal mulai pelaksanaan.')
+      }
+    } else if (durationType === 'rutin') {
+      if (!data.start_date) throw new Error('Tanggal mulai pelaksanaan wajib diisi.')
+      // Ensure end_date is cleared/empty for routine programs
+      data.end_date = ''
+    }
+
     await delay(120)
     const newProg: Program = {
       ...data,
+      duration_type: durationType,
       id: generateUUID(),
       created_by: user?.id || data.created_by,
       created_at: new Date().toISOString(),
@@ -2058,12 +2758,48 @@ export const dataService = {
       // If targetId is null/undefined — clearing the assignment is always allowed
     }
 
+    // Validation: duration_type and date constraints on update
+    const resolvedDurationType = data.duration_type || prog.duration_type || 'terbatas'
+    const resolvedStartDate = 'start_date' in data ? data.start_date : prog.start_date
+    let resolvedEndDate = 'end_date' in data ? data.end_date : prog.end_date
+
+    if (resolvedDurationType === 'terbatas' || resolvedDurationType === 'jangka_panjang') {
+      if (!resolvedStartDate) throw new Error('Tanggal mulai pelaksanaan wajib diisi.')
+      if (!resolvedEndDate) throw new Error('Tanggal selesai pelaksanaan wajib diisi.')
+      if (resolvedEndDate < resolvedStartDate) {
+        throw new Error('Tanggal selesai tidak boleh mendahului tanggal mulai pelaksanaan.')
+      }
+    } else if (resolvedDurationType === 'rutin') {
+      if (!resolvedStartDate) throw new Error('Tanggal mulai pelaksanaan wajib diisi.')
+      resolvedEndDate = ''
+      data.end_date = ''
+    }
+
+    // Protect program ownership: organization_id is canonical and CANNOT be altered
+    const { organization_id: _ignoredOrgId, ...safeData } = data
+
+    // If status transition is requested via updateProgram, validate and enforce approval gate if approving
+    if (safeData.status && safeData.status !== prog.status) {
+      if (!canTransitionProgramStatus(prog.status, safeData.status, prog.duration_type)) {
+        throw new Error(`Transisi status program dari [${prog.status}] ke [${safeData.status}] tidak diizinkan dalam siklus kerja.`)
+      }
+      if (safeData.status === 'approved') {
+        assertCanApproveProgram(user, prog, localOrganizations)
+        safeData.approved_by = user?.id
+        safeData.approved_by_organization_id = (user?.is_superadmin || user?.role === 'superadmin')
+          ? (user?.active_membership?.organization_id || 'system-superadmin')
+          : user?.active_membership?.organization_id
+        safeData.approved_at = new Date().toISOString()
+      }
+    }
+
     await delay(120)
     const index = localPrograms.findIndex((p) => p.id === id)
     const oldVal = { ...localPrograms[index] }
     localPrograms[index] = {
       ...localPrograms[index],
-      ...data,
+      ...safeData,
+      organization_id: prog.organization_id, // Immutable ownership guarantee
       updated_at: new Date().toISOString(),
     }
     setStorage('programs', localPrograms)
@@ -2092,10 +2828,16 @@ export const dataService = {
     ensureAccountContext(user)
     const prog = localPrograms.find((p) => p.id === id)
     if (!prog) throw new Error('Program kerja tidak ditemukan')
-    verifyAccess(user, 'Program', 'update', prog.organization_id)
 
-    if (!canTransitionProgramStatus(prog.status, nextStatus)) {
+    if (!canTransitionProgramStatus(prog.status, nextStatus, prog.duration_type)) {
       throw new Error(`Transisi status program dari [${prog.status}] ke [${nextStatus}] tidak diizinkan dalam siklus kerja.`)
+    }
+
+    // Stage 4: Hierarchical Approval Security Gate vs Standard Ownership Update
+    if (nextStatus === 'approved') {
+      assertCanApproveProgram(user, prog, localOrganizations)
+    } else {
+      verifyAccess(user, 'Program', 'update', prog.organization_id)
     }
 
     await delay(100)
@@ -2108,9 +2850,18 @@ export const dataService = {
 
     if (nextStatus === 'approved') {
       updatePayload.approved_by = user?.id
+      updatePayload.approved_by_organization_id = (user?.is_superadmin || user?.role === 'superadmin')
+        ? (user?.active_membership?.organization_id || 'system-superadmin')
+        : user?.active_membership?.organization_id
+      updatePayload.approved_at = new Date().toISOString()
     }
 
-    localPrograms[index] = { ...localPrograms[index], ...updatePayload }
+    // IMMUTABLE OWNERSHIP: organization_id and created_by remain strictly untouched
+    localPrograms[index] = {
+      ...localPrograms[index],
+      ...updatePayload,
+      organization_id: prog.organization_id,
+    }
     setStorage('programs', localPrograms)
     logAudit(user, 'update', 'Program', id, prog.organization_id, { status: oldStatus }, { status: nextStatus })
     return localPrograms[index]
@@ -2236,6 +2987,39 @@ export const dataService = {
     logAudit(user, 'delete', 'Agenda', id, agenda.organization_id, agenda as unknown as Record<string, unknown>, undefined)
   },
 
+  async bulkDeleteAgendas(ids: string[], user?: User | null): Promise<{ deleted: number; denied: string[] }> {
+    ensureAccountContext(user)
+    if (!ids || ids.length === 0) return { deleted: 0, denied: [] }
+
+    // Step 1: Load and authorize each record individually
+    const toDelete: typeof localAgendas = []
+    const denied: string[] = []
+    for (const id of ids) {
+      const agenda = localAgendas.find((a) => a.id === id)
+      if (!agenda) { denied.push(id); continue }
+      try {
+        verifyAccess(user, 'Agenda', 'delete', agenda.organization_id)
+        toDelete.push(agenda)
+      } catch {
+        denied.push(id)
+      }
+    }
+
+    if (toDelete.length === 0) return { deleted: 0, denied }
+
+    // Step 2: Only after full validation, delete the authorized set
+    const toDeleteIds = new Set(toDelete.map((a) => a.id))
+    localAgendas = localAgendas.filter((a) => !toDeleteIds.has(a.id))
+    setStorage('agendas', localAgendas)
+
+    // Step 3: Audit log per record
+    for (const agenda of toDelete) {
+      logAudit(user, 'delete', 'Agenda', agenda.id, agenda.organization_id, agenda as unknown as Record<string, unknown>, undefined)
+    }
+
+    return { deleted: toDelete.length, denied }
+  },
+
   // --------------------------------------------------------------------------
   // 8. CAPAIAN KINERJA (KPI & Bukti)
   // --------------------------------------------------------------------------
@@ -2329,6 +3113,36 @@ export const dataService = {
     localPerformances = localPerformances.filter((p) => p.id !== id)
     setStorage('performances', localPerformances)
     logAudit(user, 'delete', 'Performance', id, perf.organization_id, perf as unknown as Record<string, unknown>, undefined)
+  },
+
+  async bulkDeletePerformances(ids: string[], user?: User | null): Promise<{ deleted: number; denied: string[] }> {
+    ensureAccountContext(user)
+    if (!ids || ids.length === 0) return { deleted: 0, denied: [] }
+
+    const toDelete: typeof localPerformances = []
+    const denied: string[] = []
+    for (const id of ids) {
+      const perf = localPerformances.find((p) => p.id === id)
+      if (!perf) { denied.push(id); continue }
+      try {
+        verifyAccess(user, 'Performance', 'delete', perf.organization_id)
+        toDelete.push(perf)
+      } catch {
+        denied.push(id)
+      }
+    }
+
+    if (toDelete.length === 0) return { deleted: 0, denied }
+
+    const toDeleteIds = new Set(toDelete.map((p) => p.id))
+    localPerformances = localPerformances.filter((p) => !toDeleteIds.has(p.id))
+    setStorage('performances', localPerformances)
+
+    for (const perf of toDelete) {
+      logAudit(user, 'delete', 'Performance', perf.id, perf.organization_id, perf as unknown as Record<string, unknown>, undefined)
+    }
+
+    return { deleted: toDelete.length, denied }
   },
 
   // --------------------------------------------------------------------------
@@ -2518,6 +3332,49 @@ export const dataService = {
     logAudit(user, 'delete', 'Finance', id, tx.organization_id, tx as unknown as Record<string, unknown>, undefined)
   },
 
+  async updateTransaction(
+    id: string,
+    data: Partial<Omit<Transaction, 'id' | 'created_at' | 'budget' | 'recorder'>>,
+    user?: User | null
+  ): Promise<Transaction> {
+    ensureAccountContext(user)
+    const oldTx = localTransactions.find((t) => t.id === id)
+    if (!oldTx) throw new Error('Transaksi tidak ditemukan')
+    verifyAccess(user, 'Finance', 'update', oldTx.organization_id)
+    await delay(100)
+
+    // Revert old budget impact (if old was expense)
+    if (oldTx.type === 'expense') {
+      const bi = localBudgets.findIndex((b) => b.id === oldTx.budget_id)
+      if (bi !== -1) {
+        const b = localBudgets[bi]
+        const alloc = b.allocated_amount || b.amount_allocated || b.planned_amount || 0
+        const newReal = Math.max(0, (b.realized_amount || 0) - oldTx.amount)
+        localBudgets[bi] = { ...b, realized_amount: newReal, remaining_balance: Math.max(0, alloc - newReal), updated_at: new Date().toISOString() }
+        setStorage('budgets', localBudgets)
+      }
+    }
+
+    const updated: Transaction = { ...oldTx, ...data }
+    localTransactions = localTransactions.map((t) => (t.id === id ? updated : t))
+    setStorage('transactions', localTransactions)
+
+    // Apply new budget impact (if new/updated is expense)
+    if (updated.type === 'expense') {
+      const bi = localBudgets.findIndex((b) => b.id === updated.budget_id)
+      if (bi !== -1) {
+        const b = localBudgets[bi]
+        const alloc = b.allocated_amount || b.amount_allocated || b.planned_amount || 0
+        const newReal = Math.max(0, (b.realized_amount || 0) + updated.amount)
+        localBudgets[bi] = { ...b, realized_amount: newReal, remaining_balance: Math.max(0, alloc - newReal), updated_at: new Date().toISOString() }
+        setStorage('budgets', localBudgets)
+      }
+    }
+
+    logAudit(user, 'update', 'Finance', id, oldTx.organization_id, oldTx as unknown as Record<string, unknown>, updated as unknown as Record<string, unknown>)
+    return updated
+  },
+
   // --------------------------------------------------------------------------
   // 10. LAPORAN & EVALUASI (Verifikasi Ketua)
   // --------------------------------------------------------------------------
@@ -2684,6 +3541,51 @@ export const dataService = {
     localReports = localReports.filter((r) => r.id !== id)
     setStorage('reports', localReports)
     logAudit(user, 'delete', 'Report', id, report.organization_id, report as unknown as Record<string, unknown>, undefined)
+  },
+
+  /**
+   * Bulk delete Reports.
+   * Business rule: Only reports with status 'draft' or 'revised' are eligible.
+   * Reports with status submitted/in_review/approved/archived are always protected.
+   */
+  async bulkDeleteReports(ids: string[], user?: User | null): Promise<{ deleted: number; denied: string[]; protected: string[] }> {
+    ensureAccountContext(user)
+    if (!ids || ids.length === 0) return { deleted: 0, denied: [], protected: [] }
+
+    const DELETABLE_STATUSES = new Set(['draft', 'revised'])
+    const toDelete: typeof localReports = []
+    const denied: string[] = []
+    const protectedIds: string[] = []
+
+    for (const id of ids) {
+      const report = localReports.find((r) => r.id === id)
+      if (!report) { denied.push(id); continue }
+
+      // Business rule: only draft/revised can be bulk-deleted
+      if (!DELETABLE_STATUSES.has(report.status)) {
+        protectedIds.push(id)
+        continue
+      }
+
+      try {
+        verifyAccess(user, 'Report', 'delete', report.organization_id)
+        toDelete.push(report)
+      } catch {
+        denied.push(id)
+      }
+    }
+
+    if (toDelete.length === 0) return { deleted: 0, denied, protected: protectedIds }
+
+    const toDeleteIds = new Set(toDelete.map((r) => r.id))
+    localReports = localReports.filter((r) => !toDeleteIds.has(r.id))
+    setStorage('reports', localReports)
+
+    for (const report of toDelete) {
+      logAudit(user, 'delete', 'Report', report.id, report.organization_id, report as unknown as Record<string, unknown>, undefined)
+    }
+
+    return { deleted: toDelete.length, denied, protected: protectedIds }
   },
 
   // --------------------------------------------------------------------------
@@ -2955,7 +3857,271 @@ export const dataService = {
   },
 
   // --------------------------------------------------------------------------
-  // 14. HIERARCHY RESOLVER HELPERS
+  // 14. PERSON & ACCOUNT HOLDER MODEL (Model A)
+  // --------------------------------------------------------------------------
+  async getPersons(): Promise<Person[]> {
+    await delay(60)
+    return [...localPersons]
+  },
+
+  async getPersonById(id: string): Promise<Person | null> {
+    await delay(40)
+    return localPersons.find((p) => p.id === id) || null
+  },
+
+  async createPerson(
+    data: Omit<Person, 'id' | 'created_at' | 'updated_at'>,
+    user?: User | null
+  ): Promise<Person> {
+    await delay(80)
+    if (data.identifier && data.identifier.trim()) {
+      const cleanId = data.identifier.trim().toLowerCase()
+      const exists = localPersons.find((p) => p.identifier && p.identifier.trim().toLowerCase() === cleanId)
+      if (exists) {
+        throw new Error(`Nomor identitas [${data.identifier}] sudah digunakan oleh person [${exists.name}].`)
+      }
+    }
+    const newPerson: Person = {
+      ...data,
+      id: generateUUID(),
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }
+    localPersons = [newPerson, ...localPersons]
+    setStorage('persons', localPersons)
+    logAudit(user, 'create', 'Admin', newPerson.id, undefined, undefined, newPerson as unknown as Record<string, unknown>)
+    return newPerson
+  },
+
+  async updatePerson(
+    id: string,
+    data: Partial<Person>,
+    user?: User | null
+  ): Promise<Person> {
+    await delay(80)
+    const index = localPersons.findIndex((p) => p.id === id)
+    if (index === -1) throw new Error('Person tidak ditemukan')
+    const oldVal = { ...localPersons[index] }
+    localPersons[index] = {
+      ...localPersons[index],
+      ...data,
+      updated_at: new Date().toISOString(),
+    }
+    setStorage('persons', localPersons)
+    logAudit(user, 'update', 'Admin', id, undefined, oldVal as unknown as Record<string, unknown>, localPersons[index] as unknown as Record<string, unknown>)
+    return localPersons[index]
+  },
+
+  async getAccountHolderHistories(accountId?: string): Promise<AccountHolderHistory[]> {
+    await delay(60)
+    if (accountId) {
+      return localAccountHolderHistories.filter((h) => h.account_id === accountId)
+    }
+    return [...localAccountHolderHistories]
+  },
+
+  async addAccountHolderHistory(
+    historyData: Omit<AccountHolderHistory, 'id' | 'created_at'>
+  ): Promise<AccountHolderHistory> {
+    await delay(60)
+    const newHistory: AccountHolderHistory = {
+      ...historyData,
+      id: generateUUID(),
+      created_at: new Date().toISOString(),
+    }
+    localAccountHolderHistories = [newHistory, ...localAccountHolderHistories]
+    setStorage('account_holder_histories', localAccountHolderHistories)
+    return newHistory
+  },
+
+  /**
+   * STAGE 5: SERAH TERIMA PEMEGANG AKUN (PERSON HOLDER HANDOVER)
+   *
+   * Mengalihkan tanggung jawab operasional Account Unit kepada Person baru.
+   * Aturan Bisnis & Integritas Data:
+   * - Account Unit tetap permanen dan melekat pada Organization.
+   * - Organization ID, User ID, Username, dan Email akun TIDAK PERNAH berubah.
+   * - Seluruh data operasional (Program, Agenda, Task, Finance, Performance, Report) TETAP UTUH.
+   * - Approval history dan creator history TETAP UTUH.
+   * - Histori pemegang lama ditutup (period_end diisi) dan record histori baru dibuat.
+   * - Wewenang diuji melalui assertCanManageAccountHandover (Superior -> Subordinate, anti-self, anti-sibling).
+   */
+  async handoverAccountHolder(
+    params: HandoverAccountHolderParams,
+    actorUser?: User | null
+  ): Promise<{ account: User; person: Person; history: AccountHolderHistory }> {
+    ensureAccountContext(actorUser)
+    await delay(120)
+
+    const { accountId, newPersonId, newPersonData, periodStart, notes } = params
+    if (!accountId) throw new Error('Account ID wajib diisi')
+
+    const userIndex = localUsers.findIndex((u) => u.id === accountId)
+    if (userIndex === -1) throw new Error('Account Unit tidak ditemukan')
+
+    const targetAccount = localUsers[userIndex]
+    const targetOrgId = targetAccount.organization_id
+    if (!targetOrgId) {
+      throw new Error('Account Unit tidak terasosiasi dengan organisasi manapun')
+    }
+
+    // 1. Verifikasi wewenang hierarki (Superior -> Subordinate, anti-self, anti-sibling)
+    assertCanManageAccountHandover(actorUser, accountId, targetOrgId, localOrganizations)
+
+    // 2. Resolve Person (pilih person existing atau daftarkan baru dengan deduplikasi)
+    let person: Person | undefined
+    if (newPersonId) {
+      person = localPersons.find((p) => p.id === newPersonId)
+      if (!person) throw new Error('Person tidak ditemukan')
+      if (person.status === 'inactive') {
+        throw new Error('Person tidak aktif dan tidak dapat ditunjuk sebagai pemegang akun')
+      }
+    } else if (newPersonData) {
+      if (!newPersonData.name || !newPersonData.name.trim()) {
+        throw new Error('Nama lengkap person wajib diisi')
+      }
+
+      const cleanName = newPersonData.name.trim()
+      const cleanIdentifier = newPersonData.identifier?.trim() || undefined
+
+      // Deduplication: cek apakah person sudah ada berdasarkan identifier atau nama yang sama
+      const existing = localPersons.find((p) => {
+        if (cleanIdentifier && p.identifier && p.identifier.toLowerCase() === cleanIdentifier.toLowerCase()) {
+          return true
+        }
+        return p.name.trim().toLowerCase() === cleanName.toLowerCase()
+      })
+
+      if (existing) {
+        if (existing.status === 'inactive') {
+          throw new Error('Person yang cocok berstatus tidak aktif')
+        }
+        person = existing
+        if (newPersonData.phone || newPersonData.email) {
+          existing.phone = newPersonData.phone?.trim() || existing.phone
+          existing.email = newPersonData.email?.trim() || existing.email
+          existing.updated_at = new Date().toISOString()
+          setStorage('persons', localPersons)
+        }
+      } else {
+        person = {
+          id: generateUUID(),
+          name: cleanName,
+          identifier: cleanIdentifier,
+          phone: newPersonData.phone?.trim() || undefined,
+          email: newPersonData.email?.trim() || undefined,
+          status: 'active',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }
+        localPersons = [person, ...localPersons]
+        setStorage('persons', localPersons)
+      }
+    } else {
+      throw new Error('Data person pemegang baru tidak diberikan')
+    }
+
+    // 3. Cegah handover ke person yang sama
+    if (targetAccount.holder_person_id === person.id) {
+      throw new Error(
+        'Person pemegang baru tidak boleh sama dengan pemegang aktif saat ini (Handover ke person yang sama ditolak).'
+      )
+    }
+
+    const effectiveDate = periodStart?.trim() || new Date().toISOString().split('T')[0]
+
+    // 4. Tutup histori aktif lama (mencegah duplicate active holder history)
+    localAccountHolderHistories = localAccountHolderHistories.map((h) => {
+      if (h.account_id === accountId && (!h.period_end || h.period_end === '')) {
+        return {
+          ...h,
+          period_end: effectiveDate,
+        }
+      }
+      return h
+    })
+
+    // 5. Buat record histori pemegang baru
+    const newHistory: AccountHolderHistory = {
+      id: generateUUID(),
+      account_id: targetAccount.id,
+      organization_id: targetOrgId,
+      person_id: person.id,
+      person_name: person.name,
+      period_start: effectiveDate,
+      period_end: undefined, // Aktif bertugas
+      handover_notes: notes?.trim() || 'Serah terima pemegang akun resmi',
+      created_by: actorUser?.id,
+      created_at: new Date().toISOString(),
+    }
+    localAccountHolderHistories = [newHistory, ...localAccountHolderHistories]
+    setStorage('account_holder_histories', localAccountHolderHistories)
+
+    // 6. Update target Account pada localUsers (menjaga permanensi organization_id & kredensial)
+    const oldHolderName = targetAccount.holder_name
+    localUsers[userIndex] = {
+      ...targetAccount,
+      holder_person_id: person.id,
+      holder_name: person.name,
+      holder_phone: person.phone,
+      holder: person,
+      updated_at: new Date().toISOString(),
+      // Kunci integritas identitas & organisasi
+      id: targetAccount.id,
+      email: targetAccount.email,
+      username: targetAccount.username,
+      organization_id: targetOrgId,
+    }
+    setStorage('users', localUsers)
+
+    // 7. Audit log serah terima
+    logAudit(
+      actorUser,
+      'update',
+      'Admin',
+      targetAccount.id,
+      targetOrgId,
+      { holder_name: oldHolderName, holder_person_id: targetAccount.holder_person_id },
+      { holder_name: person.name, holder_person_id: person.id }
+    )
+
+    return {
+      account: localUsers[userIndex],
+      person,
+      history: newHistory,
+    }
+  },
+
+  // --------------------------------------------------------------------------
+  // 15. QUARANTINE & OPERATIONAL MIGRATION INSPECTION
+  // --------------------------------------------------------------------------
+  async getQuarantineReport(): Promise<QuarantineReportItem[]> {
+    await delay(40)
+    const raw = getRawStorageItem(`${DEMO_STORAGE_PREFIX}_quarantine_report`)
+    try {
+      return raw ? JSON.parse(raw) : []
+    } catch {
+      return []
+    }
+  },
+
+  async getQuarantineRecords(collection: string): Promise<unknown[]> {
+    await delay(40)
+    const raw = getRawStorageItem(`${DEMO_STORAGE_PREFIX}_quarantine_${collection}`)
+    try {
+      return raw ? JSON.parse(raw) : []
+    } catch {
+      return []
+    }
+  },
+
+  runOperationalMigration(): void {
+    migrateOperationalToSharedStore()
+    reloadSharedStructuralCollections()
+  },
+
+  // --------------------------------------------------------------------------
+  // 16. HIERARCHY RESOLVER HELPERS
   // --------------------------------------------------------------------------
   getParentOrganization(id: string): Organization | null {
     return getParentOrganization(id, localOrganizations)
@@ -2984,5 +4150,8 @@ export const dataService = {
     targetIds: string[]
   } {
     return resolveOrganizationScope(scope, localOrganizations)
+  },
+  reloadSharedStructuralCollections(): void {
+    reloadSharedStructuralCollections()
   },
 }

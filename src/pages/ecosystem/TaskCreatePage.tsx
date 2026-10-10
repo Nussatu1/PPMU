@@ -60,7 +60,7 @@ export const TaskCreatePage: React.FC = () => {
   const [programs, setPrograms] = useState<Program[]>([])
   const [personnels, setPersonnels] = useState<Personnel[]>([])
   const [reports, setReports] = useState<Report[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  const [isLoading, setIsLoading] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [formData, setFormData] = useState<FormData>(emptyForm([]))
 
@@ -69,7 +69,10 @@ export const TaskCreatePage: React.FC = () => {
     setFormData((p) => ({ ...p, [f]: v }))
 
   const loadData = useCallback(async () => {
-    if (!orgId) return
+    if (!orgId) {
+      setIsLoading(false)
+      return
+    }
     setIsLoading(true)
     try {
       const [progs, pers, reps] = await Promise.all([
@@ -135,16 +138,13 @@ export const TaskCreatePage: React.FC = () => {
           <Breadcrumb
             items={[
               { label: 'Organisasi', href: '/tasks' },
-              { label: 'Tugas & Tindak Lanjut', href: '/tasks' },
-              { label: 'Terbitkan Tugas' },
+              { label: 'Tugas', href: '/tasks' },
+              { label: 'Tugas Baru' },
             ]}
           />
           <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-fg">
-            Terbitkan Tugas Tindak Lanjut Baru
+            Tugas Baru
           </h1>
-          <p className="text-sm text-fg-muted">
-            Delegasikan tugas perbaikan berbasis hasil evaluasi program, catatan revisi pimpinan, atau temuan audit.
-          </p>
         </div>
         <Button
           variant="secondary"
@@ -165,24 +165,23 @@ export const TaskCreatePage: React.FC = () => {
           <SectionGrid columns={12}>
             {/* Identitas Tugas */}
             <Section
-              title="Identitas Tugas"
-              description="Nama mandat tugas, program induk terkait, dan tingkat urgensi penyelesaian."
+              title="Informasi Tugas"
               icon={<HeroCheckCircle className="w-5 h-5" />}
               columns={12}
               className="lg:col-span-6"
             >
               <div className="col-span-full">
                 <Input
-                  label="Nama Tugas Tindak Lanjut"
+                  label="Nama Tugas"
                   required
                   value={formData.title}
                   onChange={(e) => set('title', e.target.value)}
-                  placeholder="Contoh: Perbaikan Kurikulum Bootcamp Berdasarkan Masukan"
+                  placeholder="Perbaikan Kurikulum"
                 />
               </div>
               <div className="col-span-full sm:col-span-7">
                 <Select
-                  label="Induk Program Terkait"
+                  label="Program"
                   value={formData.program_id}
                   options={programs.map((p) => ({ value: p.id, label: p.title }))}
                   onChange={(e) => set('program_id', e.target.value)}
@@ -190,13 +189,13 @@ export const TaskCreatePage: React.FC = () => {
               </div>
               <div className="col-span-full sm:col-span-5">
                 <Select
-                  label="Tingkat Prioritas"
+                  label="Prioritas"
                   value={formData.priority}
                   options={[
-                    { value: 'low', label: 'Rendah (Normal)' },
-                    { value: 'medium', label: 'Sedang (Standar)' },
-                    { value: 'high', label: 'Tinggi (Atensi)' },
-                    { value: 'urgent', label: 'Mendesak (Utama)' },
+                    { value: 'low', label: 'Rendah' },
+                    { value: 'medium', label: 'Sedang' },
+                    { value: 'high', label: 'Tinggi' },
+                    { value: 'urgent', label: 'Mendesak' },
                   ]}
                   onChange={(e) => set('priority', e.target.value)}
                 />
@@ -205,15 +204,14 @@ export const TaskCreatePage: React.FC = () => {
 
             {/* Penugasan & Tenggat Waktu */}
             <Section
-              title="Penugasan & Tenggat Waktu"
-              description="Personel penanggung jawab, dasar rujukan evaluasi, dan batas waktu penyelesaian."
+              title="Penugasan & Tenggat"
               icon={<HeroClock className="w-5 h-5" />}
               columns={12}
               className="lg:col-span-6"
             >
               <div className="col-span-full">
                 <Select
-                  label="Penanggung Jawab (PIC Jabatan)"
+                  label="PIC"
                   value={formData.pic_personnel_id}
                   options={personnels.map((p) => ({
                     value: p.id,
@@ -224,7 +222,7 @@ export const TaskCreatePage: React.FC = () => {
               </div>
               <div className="col-span-full sm:col-span-6">
                 <Select
-                  label="Sumber Temuan / Evaluasi"
+                  label="Sumber Rujukan"
                   value={formData.source}
                   options={sourceOptions}
                   onChange={(e) => set('source', e.target.value)}
@@ -232,7 +230,7 @@ export const TaskCreatePage: React.FC = () => {
               </div>
               <div className="col-span-full sm:col-span-6">
                 <DatePicker
-                  label="Tenggat Waktu Penyelesaian"
+                  label="Tenggat"
                   required
                   value={formData.due_date}
                   onChange={(val) => set('due_date', val)}
@@ -243,7 +241,6 @@ export const TaskCreatePage: React.FC = () => {
             {/* Penugasan Unit (Stage 6) */}
             <Section
               title="Penugasan Unit"
-              description="Delegasikan tugas ini ke unit organisasi turunan yang bertanggung jawab atas penyelesaiannya."
               icon={<HeroUserGroup className="w-5 h-5" />}
               columns={1}
               className="lg:col-span-6"
@@ -251,25 +248,23 @@ export const TaskCreatePage: React.FC = () => {
               <UnitAssignmentSelector
                 value={formData.assigned_to_organization_id}
                 onChange={(orgId) => set('assigned_to_organization_id', orgId as unknown as string)}
-                helperText="Hanya unit turunan yang sah yang dapat dipilih. Penugasan bersifat opsional."
               />
             </Section>
 
             {/* Instruksi & Kriteria Keberhasilan */}
             <Section
-              title="Instruksi & Kriteria Keberhasilan"
-              description="Petunjuk teknis pelaksanaan dan indikator yang harus dipenuhi agar tugas dianggap tuntas."
+              title="Instruksi"
               icon={<HeroDocumentText className="w-5 h-5" />}
               columns={1}
               className="col-span-full"
             >
               <Textarea
-                label="Petunjuk & Kriteria Keberhasilan Tugas"
+                label="Petunjuk Pelaksanaan"
                 rows={3}
                 autoGrow
                 value={formData.description}
                 onChange={(e) => set('description', e.target.value)}
-                placeholder="Rincikan langkah kerja yang diharapkan, standar dokumen yang harus diserahkan, atau kriteria verifikasi..."
+                placeholder="Rincian instruksi kerja dan kriteria verifikasi..."
               />
             </Section>
           </SectionGrid>

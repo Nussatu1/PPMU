@@ -18,6 +18,7 @@ import {
   HeroArrowDownTray,
   HeroChevronRight,
   HeroDocumentText,
+  HeroPencilSquare,
 } from '@/components/icons/HeroIcons'
 import { FinanceExportModal } from '@/components/finance/FinanceExportModal'
 import {
@@ -33,13 +34,16 @@ export const FinanceListPage: React.FC = () => {
 
   const [budgets, setBudgets] = useState<Budget[]>([])
   const [transactions, setTransactions] = useState<Transaction[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  const [isLoading, setIsLoading] = useState(false)
   const [isExportModalOpen, setIsExportModalOpen] = useState(false)
 
   const orgId = currentOrganization?.id || ''
 
   const loadData = useCallback(async () => {
-    if (!orgId) return
+    if (!orgId) {
+      setIsLoading(false)
+      return
+    }
     setIsLoading(true)
     try {
       const [bdgs, txs] = await Promise.all([
@@ -104,7 +108,7 @@ export const FinanceListPage: React.FC = () => {
     },
     {
       key: 'transaction_date',
-      label: 'Tanggal & Pos Anggaran',
+      label: 'Tanggal',
       sortable: true,
       mobilePriority: 'secondary',
       render: (tx) => (
@@ -132,7 +136,7 @@ export const FinanceListPage: React.FC = () => {
     },
     {
       key: 'description',
-      label: 'Uraian Mutasi',
+      label: 'Uraian',
       mobilePriority: 'primary',
       render: (tx) => (
         <p className="text-xs text-fg leading-relaxed max-w-sm">{tx.description}</p>
@@ -140,7 +144,7 @@ export const FinanceListPage: React.FC = () => {
     },
     {
       key: 'amount',
-      label: 'Nominal Mutasi',
+      label: 'Nominal',
       sortable: true,
       mobilePriority: 'primary',
       render: (tx) => (
@@ -158,7 +162,7 @@ export const FinanceListPage: React.FC = () => {
     },
     {
       key: 'proof_url',
-      label: 'Bukti Kwitansi / Nota',
+      label: 'Bukti',
       mobilePriority: 'detail',
       render: (tx) => (
         <div>
@@ -266,6 +270,16 @@ export const FinanceListPage: React.FC = () => {
 
           <button
             type="button"
+            onClick={(e) => { e.stopPropagation(); navigate(`/finance/${tx.id}/edit`, { state: { transaction: tx } }) }}
+            className="w-11 h-11 inline-flex items-center justify-center rounded-xl text-fg-muted hover:text-primary-500 hover:bg-primary-500/10 active:bg-primary-500/20 transition-colors cursor-pointer shrink-0"
+            aria-label="Edit transaksi"
+            title="Edit Transaksi"
+          >
+            <HeroPencilSquare className="w-4 h-4" />
+          </button>
+
+          <button
+            type="button"
             onClick={() => navigate(`/finance/${tx.id}`, { state: { transaction: tx } })}
             className="w-11 h-11 inline-flex items-center justify-center rounded-xl text-fg-muted hover:text-fg hover:bg-hover-bg active:bg-hover-bg transition-colors cursor-pointer shrink-0"
             aria-label="Buka detail catatan kas"
@@ -307,7 +321,7 @@ export const FinanceListPage: React.FC = () => {
             onClick={() => navigate('/finance/create')}
             className="flex-1 sm:flex-initial"
           >
-            Tambah Transaksi
+            Tambah
           </Button>
         </div>
       </div>
@@ -315,23 +329,23 @@ export const FinanceListPage: React.FC = () => {
       {/* Summary Cards: Compact 2x2 on Mobile, 4 Cols on Desktop */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
         <div className="p-3 sm:p-4 rounded-xl border border-line bg-surface shadow-2xs">
-          <p className="text-[11px] sm:text-xs font-medium text-fg-muted uppercase tracking-wider truncate">Total Pagu</p>
+          <p className="text-[11px] sm:text-xs font-medium text-fg-muted uppercase tracking-wider truncate">Pagu</p>
           <p className="text-base sm:text-xl font-bold text-fg mt-0.5 sm:mt-1 truncate">{formatCurrency(totalAllocated)}</p>
         </div>
         <div className="p-3 sm:p-4 rounded-xl border border-line bg-surface shadow-2xs">
-          <p className="text-[11px] sm:text-xs font-medium text-fg-muted uppercase tracking-wider truncate">Penerimaan Kas</p>
+          <p className="text-[11px] sm:text-xs font-medium text-fg-muted uppercase tracking-wider truncate">Masuk</p>
           <p className="text-base sm:text-xl font-bold text-emerald-600 dark:text-emerald-400 mt-0.5 sm:mt-1 truncate">
             {formatCurrency(totalIncome)}
           </p>
         </div>
         <div className="p-3 sm:p-4 rounded-xl border border-line bg-surface shadow-2xs">
-          <p className="text-[11px] sm:text-xs font-medium text-fg-muted uppercase tracking-wider truncate">Pengeluaran Kas</p>
+          <p className="text-[11px] sm:text-xs font-medium text-fg-muted uppercase tracking-wider truncate">Keluar</p>
           <p className="text-base sm:text-xl font-bold text-red-600 dark:text-red-400 mt-0.5 sm:mt-1 truncate">
             {formatCurrency(totalExpense)}
           </p>
         </div>
         <div className="p-3 sm:p-4 rounded-xl border border-line bg-surface shadow-2xs">
-          <p className="text-[11px] sm:text-xs font-medium text-fg-muted uppercase tracking-wider truncate">Sisa Saldo</p>
+          <p className="text-[11px] sm:text-xs font-medium text-fg-muted uppercase tracking-wider truncate">Saldo</p>
           <p className="text-base sm:text-xl font-bold text-amber-600 dark:text-amber-400 mt-0.5 sm:mt-1 truncate">
             {formatCurrency(totalRemaining)}
           </p>
@@ -361,9 +375,20 @@ export const FinanceListPage: React.FC = () => {
                   <span className="font-medium text-xs sm:text-sm text-fg">
                     {b.program?.title || b.program?.name || 'Program'}
                   </span>
-                  <span className="text-xs font-semibold text-amber-600 dark:text-amber-400 shrink-0">
-                    {percent}%
-                  </span>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-xs font-semibold text-amber-600 dark:text-amber-400">
+                      {percent}%
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/budgets/${b.id}/edit`, { state: { budget: b } })}
+                      className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-primary-600 dark:text-primary-400 bg-primary-500/10 hover:bg-primary-500/20 rounded-lg transition-colors cursor-pointer"
+                      title="Edit Pos Anggaran"
+                    >
+                      <HeroPencilSquare className="w-3 h-3" />
+                      Edit
+                    </button>
+                  </div>
                 </div>
 
                 <div className="w-full h-1.5 rounded-full bg-surface-muted overflow-hidden">

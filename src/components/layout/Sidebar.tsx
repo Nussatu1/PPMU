@@ -5,7 +5,6 @@ import {
   HeroUsers,
   HeroShieldCheck,
   HeroXMark,
-  HeroBuildingOffice,
   HeroBriefcase,
   HeroCalendar,
   HeroChartBar,
@@ -18,6 +17,8 @@ import {
 } from '@/components/icons/HeroIcons'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/context/AuthContext'
+import { hasPermission, hasPageAccess } from '@/lib/authorization'
+import type { User } from '@/types/database'
 import { t } from '@/i18n'
 import { Tooltip } from '@/components/ui/Tooltip'
 
@@ -41,9 +42,16 @@ interface NavGroup {
   items: NavItem[]
 }
 
-const getNavigationGroups = (isSuperAdmin: boolean, hasOrg: boolean): NavGroup[] => {
-  const groups: NavGroup[] = [
-    {
+const getNavigationGroups = (
+  user: User | null | undefined,
+  isSuperAdmin: boolean,
+  hasOrg: boolean
+): NavGroup[] => {
+  const groups: NavGroup[] = []
+
+  // 0. Beranda / Dashboard
+  if (isSuperAdmin || hasPageAccess(user, 'Dashboard')) {
+    groups.push({
       name: '',
       items: [
         {
@@ -52,96 +60,108 @@ const getNavigationGroups = (isSuperAdmin: boolean, hasOrg: boolean): NavGroup[]
           icon: HeroHome,
         },
       ],
-    },
-  ]
-
-  // 1. Organisasi — ekosistem kinerja (ditampilkan paling atas)
-  if (hasOrg || isSuperAdmin) {
-    groups.push({
-      name: 'Organisasi',
-      items: [
-        {
-          name: 'Struktur & Seksi',
-          href: '/structures',
-          icon: HeroSquares2X2,
-        },
-        {
-          name: 'Program Kerja',
-          href: '/programs',
-          icon: HeroBriefcase,
-          badge: '3',
-          badgeColor: 'primary',
-        },
-        {
-          name: 'Agenda & Kegiatan',
-          href: '/agendas',
-          icon: HeroCalendar,
-        },
-        {
-          name: 'Capaian Kinerja',
-          href: '/performance',
-          icon: HeroChartBar,
-        },
-        {
-          name: 'Anggaran & Keuangan',
-          href: '/finance',
-          icon: HeroCurrencyDollar,
-        },
-        {
-          name: 'Laporan & Evaluasi',
-          href: '/reports',
-          icon: HeroClipboardDocumentList,
-          badge: '1',
-          badgeColor: 'danger',
-        },
-        {
-          name: 'Tugas & Tindak Lanjut',
-          href: '/tasks',
-          icon: HeroCheckCircle,
-        },
-      ],
     })
+  }
+
+  // 1. Ekosistem Jabatan & Kinerja
+  if (hasOrg || isSuperAdmin) {
+    const orgItems: NavItem[] = []
+
+    if (isSuperAdmin || hasPermission(user, 'Structure', 'viewAny')) {
+      orgItems.push({
+        name: 'Jabatan',
+        href: '/structures',
+        icon: HeroSquares2X2,
+      })
+    }
+    if (isSuperAdmin || hasPermission(user, 'Program', 'viewAny')) {
+      orgItems.push({
+        name: 'Program Kerja',
+        href: '/programs',
+        icon: HeroBriefcase,
+      })
+    }
+    if (isSuperAdmin || hasPermission(user, 'Agenda', 'viewAny')) {
+      orgItems.push({
+        name: 'Agenda & Kegiatan',
+        href: '/agendas',
+        icon: HeroCalendar,
+      })
+    }
+    if (isSuperAdmin || hasPermission(user, 'Performance', 'viewAny')) {
+      orgItems.push({
+        name: 'Capaian Kinerja',
+        href: '/performance',
+        icon: HeroChartBar,
+      })
+    }
+    if (isSuperAdmin || hasPermission(user, 'Finance', 'viewAny')) {
+      orgItems.push({
+        name: 'Anggaran & Keuangan',
+        href: '/finance',
+        icon: HeroCurrencyDollar,
+      })
+    }
+    if (isSuperAdmin || hasPermission(user, 'Report', 'viewAny')) {
+      orgItems.push({
+        name: 'Laporan & Evaluasi',
+        href: '/reports',
+        icon: HeroClipboardDocumentList,
+      })
+    }
+    if (isSuperAdmin || hasPermission(user, 'Task', 'viewAny')) {
+      orgItems.push({
+        name: 'Tugas & Tindak Lanjut',
+        href: '/tasks',
+        icon: HeroCheckCircle,
+      })
+    }
+
+    if (orgItems.length > 0) {
+      groups.push({
+        name: 'Jabatan & Kinerja',
+        items: orgItems,
+      })
+    }
   }
 
   // 2. Sistem — manajemen sistem dan preferensi
   const sistemItems: NavItem[] = []
-  if (isSuperAdmin) {
-    sistemItems.push(
-      {
-        name: 'Organisasi',
-        href: '/organizations',
-        icon: HeroBuildingOffice,
-        badge: '3',
-        badgeColor: 'primary',
-      },
-      {
-        name: 'Akun Pengguna',
-        href: '/accounts',
-        icon: HeroUsers,
-      },
-      {
-        name: 'Peran & Izin Matrix',
-        href: '/roles',
-        icon: HeroShieldCheck,
-      },
-      {
-        name: 'Audit Trail',
-        href: '/audit-logs',
-        icon: HeroClock,
-      },
-    )
+  if (isSuperAdmin || hasPermission(user, 'Admin', 'viewAny')) {
+    sistemItems.push({
+      name: 'Akun Pengguna',
+      href: '/accounts',
+      icon: HeroUsers,
+    })
+  }
+  if (isSuperAdmin || hasPageAccess(user, 'Shield') || hasPermission(user, 'Role', 'viewAny')) {
+    sistemItems.push({
+      name: 'Peran & Izin Matrix',
+      href: '/roles',
+      icon: HeroShieldCheck,
+    })
+  }
+  if (isSuperAdmin || hasPermission(user, 'Audit', 'viewAny')) {
+    sistemItems.push({
+      name: 'Audit Trail',
+      href: '/audit-logs',
+      icon: HeroClock,
+    })
+  }
+  if (isSuperAdmin || hasPageAccess(user, 'Settings')) {
+    sistemItems.push({
+      name: 'Pengaturan',
+      href: '/settings',
+      icon: HeroCog6Tooth,
+    })
   }
 
-  sistemItems.push({
-    name: 'Pengaturan',
-    href: '/settings',
-    icon: HeroCog6Tooth,
-  })
-
-  groups.push({
-    name: 'Sistem',
-    items: sistemItems,
-  })
+  if (sistemItems.length > 0) {
+    groups.push({
+      name: 'Sistem',
+      items: sistemItems,
+    })
+  }
 
   return groups
 }
@@ -191,7 +211,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     return 'ring-1 ring-inset ring-amber-600/10 bg-amber-50 text-amber-600 dark:bg-amber-400/10 dark:ring-amber-400/30 dark:text-amber-400'
   }
 
-  const navigationGroups = getNavigationGroups(isSuperAdmin, hasOrg)
+  const navigationGroups = getNavigationGroups(user, isSuperAdmin, hasOrg)
 
   const sidebarContent = (
     <div

@@ -48,7 +48,7 @@ export const PerformanceCreatePage: React.FC = () => {
   const { success, error } = useToast()
 
   const [programs, setPrograms] = useState<Program[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  const [isLoading, setIsLoading] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [formData, setFormData] = useState<FormData>(emptyForm([]))
 
@@ -57,7 +57,10 @@ export const PerformanceCreatePage: React.FC = () => {
     setFormData((p) => ({ ...p, [f]: v }))
 
   const loadData = useCallback(async () => {
-    if (!orgId) return
+    if (!orgId) {
+      setIsLoading(false)
+      return
+    }
     setIsLoading(true)
     try {
       const progs = await dataService.getPrograms(orgId, user)
@@ -113,16 +116,13 @@ export const PerformanceCreatePage: React.FC = () => {
           <Breadcrumb
             items={[
               { label: 'Organisasi', href: '/performance' },
-              { label: 'Capaian Kinerja', href: '/performance' },
-              { label: 'Tambah Indikator' },
+              { label: 'Kinerja', href: '/performance' },
+              { label: 'KPI Baru' },
             ]}
           />
           <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-fg">
-            Tambah Indikator KPI Baru
+            KPI Baru
           </h1>
-          <p className="text-sm text-fg-muted">
-            Daftarkan metrik indikator kinerja utama, target sasaran numerik, dan berkas bukti fisik.
-          </p>
         </div>
         <Button
           variant="secondary"
@@ -142,23 +142,22 @@ export const PerformanceCreatePage: React.FC = () => {
         <form noValidate onSubmit={(e) => handleSave(e, false)} className="space-y-5">
           {/* Identitas Indikator */}
           <Section
-            title="Identitas Indikator Kinerja"
-            description="Nama spesifik indikator, relasi program kerja induk, dan rentang periode evaluasi."
+            title="Informasi KPI"
             icon={<HeroChartBar className="w-5 h-5" />}
             columns={12}
           >
             <div className="col-span-full">
               <Input
-                label="Nama Indikator KPI"
+                label="Nama KPI"
                 required
                 value={formData.kpi_name}
                 onChange={(e) => set('kpi_name', e.target.value)}
-                placeholder="Contoh: Jumlah Publikasi Riset Terindeks Scopus"
+                placeholder="Publikasi Riset"
               />
             </div>
             <div className="col-span-full md:col-span-7">
               <Select
-                label="Induk Program Kerja"
+                label="Program"
                 required
                 value={formData.program_id}
                 onValueChange={(val) => set('program_id', String(val))}
@@ -167,24 +166,23 @@ export const PerformanceCreatePage: React.FC = () => {
             </div>
             <div className="col-span-full md:col-span-5">
               <Input
-                label="Periode Evaluasi"
+                label="Periode"
                 value={formData.period}
                 onChange={(e) => set('period', e.target.value)}
-                placeholder="Contoh: Q1 2026 / Semester Genap"
+                placeholder="Semester Genap"
               />
             </div>
           </Section>
 
           {/* Target & Realisasi */}
           <Section
-            title="Target & Capaian Berjalan"
-            description="Angka kuantitatif target, capaian yang terealisasi saat ini, dan unit satuan ukur."
+            title="Target & Capaian"
             icon={<HeroCheckCircle className="w-5 h-5" />}
             columns={12}
           >
             <div className="col-span-full md:col-span-4">
               <NumberInput
-                label="Target Angka"
+                label="Target"
                 required
                 value={formData.target}
                 onChange={(val) => set('target', val || 0)}
@@ -192,7 +190,7 @@ export const PerformanceCreatePage: React.FC = () => {
             </div>
             <div className="col-span-full md:col-span-4">
               <NumberInput
-                label="Realisasi Saat Ini"
+                label="Realisasi"
                 required
                 value={formData.realized}
                 onChange={(val) => set('realized', val || 0)}
@@ -200,37 +198,34 @@ export const PerformanceCreatePage: React.FC = () => {
             </div>
             <div className="col-span-full md:col-span-4">
               <Input
-                label="Satuan Ukur"
+                label="Satuan"
                 value={formData.unit}
                 onChange={(e) => set('unit', e.target.value)}
-                placeholder="Contoh: Dokumen / Persen"
-                helperText="Tentukan unit kuantitatif."
+                placeholder="Dokumen / %"
               />
             </div>
           </Section>
 
           {/* Bukti & Catatan */}
           <Section
-            title="Bukti Fisik & Catatan Tambahan"
-            description="Unggah berkas bukti laporan lapangan dan catatan progres ketercapaian KPI."
+            title="Bukti & Catatan"
             icon={<HeroDocumentText className="w-5 h-5" />}
             columns={1}
           >
             <FileUpload
-              label="Unggah Berkas Bukti Fisik / Dokumentasi Lapangan"
+              label="Bukti Fisik"
               value={formData.evidence_urls}
               onChange={(val) => set('evidence_urls', val)}
               accept=".pdf,.jpg,.jpeg,.png,.docx,.xlsx"
               multiple
-              helperText="Unggah berkas laporan, foto kegiatan, atau dokumen pendukung KPI (Maks. 10 MB per berkas)."
             />
             <Textarea
-              label="Catatan Progres / Kendala"
+              label="Catatan"
               rows={3}
               autoGrow
               value={formData.notes}
               onChange={(e) => set('notes', e.target.value)}
-              placeholder="Catatan mengenai perkembangan capaian, hambatan yang ditemui, atau keterangan pendukung..."
+              placeholder="Catatan perkembangan atau kendala capaian..."
             />
           </Section>
 

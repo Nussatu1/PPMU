@@ -37,4 +37,6 @@ graphify-out/
 .env.local
 .env.*.local
 .agents/
+*.html
+!index.html
 

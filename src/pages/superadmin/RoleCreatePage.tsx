@@ -8,7 +8,7 @@ import { Checkbox } from '@/components/ui/Checkbox'
 import { useToast } from '@/context/ToastContext'
 import { useAuth } from '@/context/AuthContext'
 import { dataService } from '@/lib/dataService'
-import type { PermissionAction, PermissionResource } from '@/types/database'
+import type { PermissionAction, PermissionResource, Organization, RoleEntity } from '@/types/database'
 import {
   HeroChevronDown,
   HeroMagnifyingGlass,
@@ -87,8 +87,10 @@ export const RoleCreatePage: React.FC = () => {
   const [name, setName] = useState('')
   const [slug, setSlug] = useState('')
   const [scope, setScope] = useState('organization')
+  const [organizationId, setOrganizationId] = useState('')
+  const [organizations, setOrganizations] = useState<Organization[]>([])
+  const [existingRoles, setExistingRoles] = useState<RoleEntity[]>([])
   const [isSaving, setIsSaving] = useState(false)
-
 
   // Active Tab: 'resources' | 'pages' | 'widgets'
   const [activeTab, setActiveTab] = useState<'resources' | 'pages' | 'widgets'>('resources')
@@ -102,18 +104,30 @@ export const RoleCreatePage: React.FC = () => {
   // Set of selected permissions
   const [selectedPermissions, setSelectedPermissions] = useState<Set<string>>(new Set())
 
-  // Load existing roles and handle cloneFrom
+  // Load existing roles, organizations, and handle cloneFrom
   useEffect(() => {
-    if (cloneFromId) {
-      dataService.getRoles(undefined, user).then((rls) => {
-        const found = rls.find((r) => r.id === cloneFromId)
-        if (found) {
-          setName(`Salinan ${found.name}`)
-          setSlug(`salinan-${found.slug}`)
-          setSelectedPermissions(new Set(found.permissions))
+    Promise.all([
+      dataService.getRoles(undefined, user),
+      dataService.getOrganizations(user),
+    ])
+      .then(([rls, orgs]) => {
+        setExistingRoles(rls)
+        setOrganizations(orgs)
+
+        if (cloneFromId) {
+          const found = rls.find((r) => r.id === cloneFromId)
+          if (found) {
+            setName(`Salinan ${found.name}`)
+            setSlug(`salinan-${found.slug || found.id}`)
+            setScope(found.is_system ? 'system' : 'organization')
+            setOrganizationId(found.organization_id || '')
+            setSelectedPermissions(new Set(found.permissions))
+          }
         }
       })
-    }
+      .catch((err) => {
+        console.warn('Gagal memuat peran/organisasi:', err)
+      })
   }, [cloneFromId, user])
 
 
@@ -234,26 +248,44 @@ export const RoleCreatePage: React.FC = () => {
   // Save handler
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!name.trim()) {
+    const trimmedName = name.trim()
+    if (!trimmedName) {
       error('Validasi Gagal', 'Nama Peran wajib diisi')
+      return
+    }
+
+    const isDuplicate = existingRoles.some(
+      (r) => r.name.toLowerCase() === trimmedName.toLowerCase()
+    )
+    if (isDuplicate) {
+      error('Nama Peran Sudah Ada', `Peran dengan nama "${trimmedName}" sudah terdaftar di sistem.`)
       return
     }
 
     setIsSaving(true)
     try {
+      const targetOrg = organizations.find((o) => o.id === organizationId)
+      const descScope =
+        scope === 'system'
+          ? 'Sistem Global'
+          : targetOrg
+          ? `Khusus ${targetOrg.name}`
+          : 'Semua Organisasi'
+
       await dataService.createRole(
         {
-          name: name.trim(),
+          name: trimmedName,
           slug: slug.trim() || undefined,
-          description: `Peran ${name.trim()} (${scope === 'system' ? 'Sistem Global' : 'Organisasi'})`,
+          description: `Peran ${trimmedName} (${descScope})`,
           permissions: Array.from(selectedPermissions),
           status: 'active',
           is_system: scope === 'system',
+          organization_id: scope === 'organization' && organizationId ? organizationId : undefined,
         },
         user
       )
 
-      success('Peran Dibuat', `Peran ${name} berhasil dibuat dengan ${selectedPermissions.size} hak akses.`)
+      success('Peran Dibuat', `Peran ${trimmedName} berhasil dibuat dengan ${selectedPermissions.size} hak akses.`)
       navigate('/roles')
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Gagal membuat peran'
@@ -295,26 +327,26 @@ export const RoleCreatePage: React.FC = () => {
             Kembali
           </Button>
           <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-fg">
-            Tambah Peran
+            Peran Baru
           </h1>
         </div>
 
-        {/* SECTION 1: METADATA PERAN (MINIMAL 1-ROW CARD) */}
-        <div className="rounded-xl border border-line bg-surface p-3.5 sm:p-4 shadow-2xs">
-          <div className="grid grid-cols-12 gap-3.5">
-            {/* Nama Peran (5 Kolom) */}
-            <div className="col-span-12 md:col-span-5">
+        {/* SECTION 1: METADATA PERAN */}
+        <div className="rounded-xl border border-line bg-surface p-5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-4">
+            {/* Nama (5 Kolom) */}
+            <div className="col-span-1 sm:col-span-2 lg:col-span-5">
               <Input
-                label="Nama Peran"
+                label="Nama"
                 required
                 value={name}
                 onChange={(e) => handleNameChange(e.target.value)}
-                placeholder="Contoh: Auditor Internal"
+                placeholder="Auditor Internal"
               />
             </div>
 
             {/* Slug (3 Kolom) */}
-            <div className="col-span-12 md:col-span-3">
+            <div className="col-span-1 lg:col-span-3">
               <Input
                 label="Slug"
                 required
@@ -325,19 +357,37 @@ export const RoleCreatePage: React.FC = () => {
               />
             </div>
 
-            {/* Ruang Lingkup / Guard (4 Kolom) */}
-            <div className="col-span-12 md:col-span-4">
+            {/* Ruang Lingkup (4 Kolom) */}
+            <div className={`col-span-1 sm:col-span-2 ${scope === 'organization' ? 'lg:col-span-2' : 'lg:col-span-4'}`}>
               <Select
-                label="Ruang Lingkup (Guard)"
+                label="Lingkup"
                 required
                 value={scope}
                 onValueChange={(val) => setScope(String(val))}
                 options={[
-                  { value: 'organization', label: 'Organisasi (Multi-Tenant)' },
-                  { value: 'system', label: 'Sistem Global (Superadmin)' },
+                  { value: 'organization', label: 'Organisasi' },
+                  { value: 'system', label: 'Sistem Global' },
                 ]}
               />
             </div>
+
+            {/* Target Organisasi (Hanya muncul jika lingkup Organisasi) */}
+            {scope === 'organization' && (
+              <div className="col-span-1 sm:col-span-2 lg:col-span-2">
+                <Select
+                  label="Target Organisasi"
+                  value={organizationId || 'all'}
+                  onValueChange={(val) => setOrganizationId(val === 'all' ? '' : String(val))}
+                  options={[
+                    { value: 'all', label: 'Semua Organisasi' },
+                    ...organizations.map((org) => ({
+                      value: org.id,
+                      label: `${org.name}${org.code ? ` (${org.code})` : ''}`,
+                    })),
+                  ]}
+                />
+              </div>
+            )}
           </div>
         </div>
 
@@ -477,10 +527,25 @@ export const RoleCreatePage: React.FC = () => {
                         >
                           Hanya Baca
                         </button>
+                        <span className="text-xs text-fg-muted">·</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const resKeys = SHIELD_ACTIONS_GRID.map((a) => `${res.key}.${a.key}`)
+                            setSelectedPermissions((prev) => {
+                              const next = new Set(prev)
+                              resKeys.forEach((k) => next.delete(k))
+                              return next
+                            })
+                          }}
+                          className="text-xs font-semibold text-fg-muted hover:text-red-500 hover:underline cursor-pointer"
+                        >
+                          Kosongkan
+                        </button>
                       </div>
 
-                      {/* 4 COLUMNS X 3 ROWS GRID PERSIS SEPERTI DI GAMBAR */}
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-y-3 gap-x-6">
+                      {/* 2-4 COLUMNS GRID RESPONSIVE */}
+                      <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-y-2.5 sm:gap-y-3 gap-x-3 sm:gap-x-6">
                         {SHIELD_ACTIONS_GRID.map((act) => {
                           const permKey = `${res.key}.${act.key}`
                           const isChecked = selectedPermissions.has(permKey)

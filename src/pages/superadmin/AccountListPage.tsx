@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { createPortal } from 'react-dom'
 import { PageContainer } from '@/components/layout/PageContainer'
 import { Button } from '@/components/ui/Button'
@@ -7,10 +8,14 @@ import { Badge } from '@/components/ui/Badge'
 import { useToast } from '@/context/ToastContext'
 import { useAuth } from '@/context/AuthContext'
 import { dataService } from '@/lib/dataService'
-import type { OrganizationMembership, Organization, RoleEntity, User } from '@/types/database'
+import type { OrganizationMembership, Organization, RoleEntity, Person, AccountHolderHistory } from '@/types/database'
+import { canManageAccountHandover } from '@/lib/authorization'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { Modal } from '@/components/ui/Modal'
+import { DatePicker } from '@/components/ui/DatePicker'
+import { cn } from '@/lib/utils'
+import { Checkbox } from '@/components/ui/Checkbox'
 import {
   HeroPlus,
   HeroUsers,
@@ -20,26 +25,35 @@ import {
   HeroArrowRightOnRectangle,
   HeroNoSymbol,
   HeroPencilSquare,
-  HeroEye,
-  HeroEyeSlash,
   HeroClipboardDocument,
   HeroArrowPath,
+  HeroFunnel,
+  HeroTrash,
+  HeroArrowsRightLeft,
 } from '@/components/icons/HeroIcons'
 
 interface ActionMenuProps {
   membership: OrganizationMembership
+  canHandover?: boolean
   onEdit: (mem: OrganizationMembership) => void
   onResetPassword: (mem: OrganizationMembership) => void
   onToggleStatus: (mem: OrganizationMembership) => void
   onMoveOrg: (mem: OrganizationMembership) => void
+  onHandover?: (mem: OrganizationMembership) => void
+  onDelete?: (mem: OrganizationMembership) => void
+  onSwitchAccount?: (mem: OrganizationMembership) => void
 }
 
 const ActionMenu: React.FC<ActionMenuProps> = ({
   membership,
+  canHandover = false,
   onEdit,
   onResetPassword,
   onToggleStatus,
   onMoveOrg,
+  onHandover,
+  onDelete,
+  onSwitchAccount,
 }) => {
   const [isOpen, setIsOpen] = useState(false)
   const [coords, setCoords] = useState<{ top: number; left: number } | null>(null)
@@ -114,65 +128,259 @@ const ActionMenu: React.FC<ActionMenuProps> = ({
       </button>
 
       {isOpen &&
-        coords &&
         createPortal(
-          <div
-            ref={menuRef}
-            style={{ position: 'fixed', top: coords.top, left: coords.left, zIndex: 9999 }}
-            className="w-48 rounded-xl bg-surface border border-line shadow-xl py-1 text-xs text-fg animate-scale-in"
-          >
-            <button
-              type="button"
-              onClick={() => {
-                setIsOpen(false)
-                onEdit(membership)
-              }}
-              className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-hover-bg transition text-fg"
-            >
-              <HeroPencilSquare className="w-4 h-4 text-amber-500" />
-              <span>Ubah Data Akun</span>
-            </button>
+          <>
+            {/* MOBILE: iOS Action Sheet (< md) */}
+            <div className="md:hidden fixed inset-0 z-[9999] flex flex-col justify-end">
+              {/* Backdrop */}
+              <div
+                className="fixed inset-0 bg-overlay/60 backdrop-blur-xs transition-opacity animate-fade-in"
+                onClick={() => setIsOpen(false)}
+              />
 
-            <button
-              type="button"
-              onClick={() => {
-                setIsOpen(false)
-                onResetPassword(membership)
-              }}
-              className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-hover-bg transition text-fg"
-            >
-              <HeroKey className="w-4 h-4 text-blue-500" />
-              <span>Reset Kata Sandi</span>
-            </button>
+              {/* Sheet Container */}
+              <div
+                ref={menuRef}
+                className="relative w-full rounded-t-2xl bg-surface border-t border-line shadow-2xl p-4 space-y-3 z-10 animate-slide-in-bottom pb-[max(1rem,env(safe-area-inset-bottom))]"
+              >
+                {/* Visual Drag Indicator / Pill Handle */}
+                <div className="w-10 h-1 bg-line-strong rounded-full mx-auto mb-2" />
 
-            <button
-              type="button"
-              onClick={() => {
-                setIsOpen(false)
-                onMoveOrg(membership)
-              }}
-              className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-hover-bg transition text-fg"
-            >
-              <HeroArrowRightOnRectangle className="w-4 h-4 text-purple-500" />
-              <span>Pindah Organisasi</span>
-            </button>
+                {/* Account Header Info */}
+                <div className="px-2 pb-2 border-b border-line-divider">
+                  <p className="font-semibold text-fg text-sm truncate">{membership.user?.name}</p>
+                  <p className="text-xs text-fg-muted truncate">
+                    @{membership.user?.username || membership.user?.email?.split('@')[0]} • {membership.organization?.name || 'Lintas Organisasi'}
+                  </p>
+                </div>
 
-            <div className="my-1 border-t border-line" />
+                {/* Action Items List */}
+                <div className="space-y-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsOpen(false)
+                      onEdit(membership)
+                    }}
+                    className="w-full flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-hover-bg active:bg-hover-bg transition text-fg text-sm font-medium cursor-pointer"
+                  >
+                    <div className="w-8 h-8 rounded-lg bg-amber-500/10 text-amber-600 flex items-center justify-center shrink-0">
+                      <HeroPencilSquare className="w-4 h-4" />
+                    </div>
+                    <span>Ubah Data Akun</span>
+                  </button>
 
-            <button
-              type="button"
-              onClick={() => {
-                setIsOpen(false)
-                onToggleStatus(membership)
-              }}
-              className={`w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-hover-bg transition ${
-                isUserActive ? 'text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400'
-              }`}
-            >
-              <HeroNoSymbol className="w-4 h-4" />
-              <span>{isUserActive ? 'Nonaktifkan Akun' : 'Aktifkan Akun'}</span>
-            </button>
-          </div>,
+                  {canHandover && onHandover && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsOpen(false)
+                        onHandover(membership)
+                      }}
+                      className="w-full flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-hover-bg active:bg-hover-bg transition text-fg text-sm font-medium cursor-pointer"
+                    >
+                      <div className="w-8 h-8 rounded-lg bg-emerald-500/10 text-emerald-600 flex items-center justify-center shrink-0">
+                        <HeroArrowPath className="w-4 h-4" />
+                      </div>
+                      <span>Serah Terima (Handover)</span>
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsOpen(false)
+                      onResetPassword(membership)
+                    }}
+                    className="w-full flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-hover-bg active:bg-hover-bg transition text-fg text-sm font-medium cursor-pointer"
+                  >
+                    <div className="w-8 h-8 rounded-lg bg-blue-500/10 text-blue-600 flex items-center justify-center shrink-0">
+                      <HeroKey className="w-4 h-4" />
+                    </div>
+                    <span>Reset Kata Sandi</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsOpen(false)
+                      onMoveOrg(membership)
+                    }}
+                    className="w-full flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-hover-bg active:bg-hover-bg transition text-fg text-sm font-medium cursor-pointer"
+                  >
+                    <div className="w-8 h-8 rounded-lg bg-purple-500/10 text-purple-600 flex items-center justify-center shrink-0">
+                      <HeroArrowRightOnRectangle className="w-4 h-4" />
+                    </div>
+                    <span>{membership.organization_id ? 'Pindah Penugasan Jabatan' : 'Tugaskan ke Jabatan'}</span>
+                  </button>
+
+                  <div className="my-1 border-t border-line-divider" />
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsOpen(false)
+                      onToggleStatus(membership)
+                    }}
+                    className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-hover-bg active:bg-hover-bg transition text-sm font-semibold cursor-pointer ${
+                      isUserActive ? 'text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400'
+                    }`}
+                  >
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                      isUserActive ? 'bg-red-500/10 text-red-600' : 'bg-emerald-500/10 text-emerald-600'
+                    }`}>
+                      <HeroNoSymbol className="w-4 h-4" />
+                    </div>
+                    <span>{isUserActive ? 'Nonaktifkan Akun' : 'Aktifkan Akun'}</span>
+                  </button>
+
+                  {onSwitchAccount && membership.user && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsOpen(false)
+                        onSwitchAccount(membership)
+                      }}
+                      className="w-full flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-hover-bg active:bg-hover-bg transition text-fg text-sm font-semibold cursor-pointer text-amber-600 dark:text-amber-400"
+                    >
+                      <div className="w-8 h-8 rounded-lg bg-amber-500/10 text-amber-600 flex items-center justify-center shrink-0">
+                        <HeroArrowsRightLeft className="w-4 h-4" />
+                      </div>
+                      <span>Beralih (Login Sebagai Akun Ini)</span>
+                    </button>
+                  )}
+
+                  {onDelete && !membership.user?.is_superadmin && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsOpen(false)
+                        onDelete(membership)
+                      }}
+                      className="w-full flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-hover-bg active:bg-hover-bg transition text-sm font-semibold text-red-600 dark:text-red-400 cursor-pointer"
+                    >
+                      <div className="w-8 h-8 rounded-lg bg-red-500/10 text-red-600 flex items-center justify-center shrink-0">
+                        <HeroTrash className="w-4 h-4" />
+                      </div>
+                      <span>Hapus Akun</span>
+                    </button>
+                  )}
+                </div>
+
+                {/* iOS Dismiss Button */}
+                <button
+                  type="button"
+                  onClick={() => setIsOpen(false)}
+                  className="w-full min-h-[44px] py-2.5 rounded-xl bg-surface-muted hover:bg-hover-bg border border-line text-sm font-semibold text-fg cursor-pointer transition text-center"
+                >
+                  Tutup
+                </button>
+              </div>
+            </div>
+
+            {/* DESKTOP: Popover Dropdown (>= md) */}
+            {coords && (
+              <div
+                ref={menuRef}
+                style={{ position: 'fixed', top: coords.top, left: coords.left, zIndex: 9999 }}
+                className="hidden md:block w-56 rounded-xl bg-surface border border-line shadow-xl py-1 text-xs text-fg animate-scale-in"
+              >
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsOpen(false)
+                    onEdit(membership)
+                  }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-hover-bg transition text-fg"
+                >
+                  <HeroPencilSquare className="w-4 h-4 text-amber-500" />
+                  <span>Ubah Data Akun</span>
+                </button>
+
+                {canHandover && onHandover && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsOpen(false)
+                      onHandover(membership)
+                    }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-hover-bg transition text-fg"
+                  >
+                    <HeroArrowPath className="w-4 h-4 text-emerald-500" />
+                    <span>Serah Terima (Handover)</span>
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsOpen(false)
+                    onResetPassword(membership)
+                  }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-hover-bg transition text-fg"
+                >
+                  <HeroKey className="w-4 h-4 text-blue-500" />
+                  <span>Reset Kata Sandi</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsOpen(false)
+                    onMoveOrg(membership)
+                  }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-hover-bg transition text-fg"
+                >
+                  <HeroArrowRightOnRectangle className="w-4 h-4 text-purple-500" />
+                  <span>{membership.organization_id ? 'Pindah Penugasan Jabatan' : 'Tugaskan ke Jabatan'}</span>
+                </button>
+
+                <div className="my-1 border-t border-line" />
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsOpen(false)
+                    onToggleStatus(membership)
+                  }}
+                  className={`w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-hover-bg transition ${
+                    isUserActive ? 'text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400'
+                  }`}
+                >
+                  <HeroNoSymbol className="w-4 h-4" />
+                  <span>{isUserActive ? 'Nonaktifkan Akun' : 'Aktifkan Akun'}</span>
+                </button>
+
+                {onSwitchAccount && membership.user && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsOpen(false)
+                      onSwitchAccount(membership)
+                    }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-amber-500/10 text-amber-600 dark:text-amber-400 font-medium transition"
+                  >
+                    <HeroArrowsRightLeft className="w-4 h-4 text-amber-500" />
+                    <span>Beralih (Login Akun Ini)</span>
+                  </button>
+                )}
+
+                {onDelete && !membership.user?.is_superadmin && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsOpen(false)
+                      onDelete(membership)
+                    }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-red-500/10 text-red-600 dark:text-red-400 transition"
+                  >
+                    <HeroTrash className="w-4 h-4" />
+                    <span>Hapus Akun</span>
+                  </button>
+                )}
+              </div>
+            )}
+          </>,
           document.body
         )}
     </div>
@@ -180,7 +388,8 @@ const ActionMenu: React.FC<ActionMenuProps> = ({
 }
 
 export const AccountListPage: React.FC = () => {
-  const { user } = useAuth()
+  const navigate = useNavigate()
+  const { user, switchPersona } = useAuth()
   const { success, error } = useToast()
 
   const [memberships, setMemberships] = useState<OrganizationMembership[]>([])
@@ -194,21 +403,7 @@ export const AccountListPage: React.FC = () => {
   const [selectedLevelFilter, setSelectedLevelFilter] = useState('all')
   const [selectedRoleFilter, setSelectedRoleFilter] = useState('all')
   const [selectedStatusFilter, setSelectedStatusFilter] = useState('all')
-
-  // Create / Edit Modal State
-  const [isFormModalOpen, setIsFormModalOpen] = useState(false)
-  const [editingMem, setEditingMem] = useState<OrganizationMembership | null>(null)
-  const [showPassword, setShowPassword] = useState(false)
-  const [formData, setFormData] = useState({
-    name: '',
-    username: '',
-    email: '',
-    password: '',
-    organization_id: '',
-    level: 'admin' as 'admin' | 'anggota',
-    role_id: 'role-admin-org',
-    status: 'active' as OrganizationMembership['status'],
-  })
+  const [isMobileFiltersOpen, setIsMobileFiltersOpen] = useState(false)
 
   // Credential Handover Card Modal State
   const [isCredentialModalOpen, setIsCredentialModalOpen] = useState(false)
@@ -226,21 +421,126 @@ export const AccountListPage: React.FC = () => {
   const [resetMem, setResetMem] = useState<OrganizationMembership | null>(null)
   const [statusToggleMem, setStatusToggleMem] = useState<OrganizationMembership | null>(null)
   const [moveOrgMem, setMoveOrgMem] = useState<OrganizationMembership | null>(null)
+  const [deleteMem, setDeleteMem] = useState<OrganizationMembership | null>(null)
   const [moveOrgForm, setMoveOrgForm] = useState({
     targetOrgId: '',
     targetRoleId: '',
     level: 'anggota' as 'admin' | 'anggota',
   })
 
+  // Handover Modal State (Stage 5)
+  const [handoverMem, setHandoverMem] = useState<OrganizationMembership | null>(null)
+  const [handoverHistories, setHandoverHistories] = useState<AccountHolderHistory[]>([])
+  const [availablePersons, setAvailablePersons] = useState<Person[]>([])
+  const [handoverMode, setHandoverMode] = useState<'select' | 'new'>('select')
+  const [selectedPersonId, setSelectedPersonId] = useState('')
+  const [newPersonForm, setNewPersonForm] = useState({
+    name: '',
+    identifier: '',
+    phone: '',
+    email: '',
+  })
+  const [periodStart, setPeriodStart] = useState(new Date().toISOString().split('T')[0])
+  const [handoverNotes, setHandoverNotes] = useState('')
+  const [isSubmittingHandover, setIsSubmittingHandover] = useState(false)
+  const [isConfirmHandoverOpen, setIsConfirmHandoverOpen] = useState(false)
+
+  const openHandoverModal = async (mem: OrganizationMembership) => {
+    setHandoverMem(mem)
+    setHandoverMode('select')
+    setSelectedPersonId('')
+    setNewPersonForm({ name: '', identifier: '', phone: '', email: '' })
+    setPeriodStart(new Date().toISOString().split('T')[0])
+    setHandoverNotes('')
+    setIsConfirmHandoverOpen(false)
+
+    try {
+      const [pList, hList] = await Promise.all([
+        dataService.getPersons(),
+        dataService.getAccountHolderHistories(mem.user_id),
+      ])
+      const currentHolderId = mem.user?.holder_person_id
+      setAvailablePersons(pList.filter((p) => p.status === 'active' && p.id !== currentHolderId))
+      setHandoverHistories(hList)
+    } catch {
+      setAvailablePersons([])
+      setHandoverHistories([])
+    }
+  }
+
+  const handleTriggerConfirmHandover = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (handoverMode === 'select' && !selectedPersonId) {
+      error('Validasi Gagal', 'Silakan pilih person pemegang baru dari daftar.')
+      return
+    }
+    if (handoverMode === 'new' && !newPersonForm.name.trim()) {
+      error('Validasi Gagal', 'Nama lengkap person baru wajib diisi.')
+      return
+    }
+    if (!periodStart) {
+      error('Validasi Gagal', 'Tanggal mulai serah terima wajib diisi.')
+      return
+    }
+    setIsConfirmHandoverOpen(true)
+  }
+
+  const handleExecuteHandover = async () => {
+    if (!handoverMem) return
+    setIsSubmittingHandover(true)
+    try {
+      await dataService.handoverAccountHolder(
+        {
+          accountId: handoverMem.user_id,
+          newPersonId: handoverMode === 'select' ? selectedPersonId : undefined,
+          newPersonData: handoverMode === 'new' ? newPersonForm : undefined,
+          periodStart,
+          notes: handoverNotes,
+        },
+        user
+      )
+
+      success('Serah Terima Berhasil', `Pemegang akun unit ${handoverMem.user?.name} berhasil dialihkan.`)
+      setIsConfirmHandoverOpen(false)
+      setHandoverMem(null)
+      loadData()
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Gagal memproses serah terima pemegang akun'
+      error('Gagal Serah Terima', msg)
+    } finally {
+      setIsSubmittingHandover(false)
+    }
+  }
+
   const loadData = useCallback(async () => {
     setIsLoading(true)
     try {
-      const [mems, orgs, rls] = await Promise.all([
+      const [mems, allUsers, orgs, rls] = await Promise.all([
         dataService.getMemberships(undefined, user),
+        dataService.getUsers(),
         dataService.getOrganizations(user),
         dataService.getRoles(undefined, user),
       ])
-      setMemberships(mems)
+
+      // Gabungkan akun yang sudah memiliki penugasan organisasi dan akun unassigned (pool akun)
+      const userAssignedIds = new Set(mems.map((m) => m.user_id))
+      const unassignedUsers = allUsers.filter((u) => !userAssignedIds.has(u.id))
+
+      const unassignedMemberships: OrganizationMembership[] = unassignedUsers.map((u) => ({
+        id: `unassigned-${u.id}`,
+        user_id: u.id,
+        organization_id: '',
+        role_id: '',
+        level: (u.role === 'admin' || u.role === 'superadmin') ? 'admin' : 'anggota',
+        status: u.status || 'active',
+        created_at: u.created_at || new Date().toISOString(),
+        joined_at: u.created_at || new Date().toISOString(),
+        user: u,
+        organization: undefined,
+        role: undefined,
+      }))
+
+      setMemberships([...mems, ...unassignedMemberships])
       setOrganizations(orgs)
       setRoles(rls)
     } catch (err: unknown) {
@@ -255,141 +555,21 @@ export const AccountListPage: React.FC = () => {
     loadData()
   }, [loadData])
 
-  const generateRandomPassword = () => {
-    const chars = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789'
-    let rand = ''
-    for (let i = 0; i < 6; i++) {
-      rand += chars.charAt(Math.floor(Math.random() * chars.length))
-    }
-    return `Akses${rand}#`
+
+  const handleEditAccount = (mem: OrganizationMembership) => {
+    const targetId = mem.id.startsWith('unassigned-') ? mem.user_id : mem.id
+    navigate(`/accounts/${targetId}/edit`)
   }
 
-  const openCreateModal = () => {
-    setEditingMem(null)
-    const initialOrgId = organizations[0]?.id || ''
-    const initialRoleId = roles[0]?.id || 'role-admin-org'
-    setFormData({
-      name: '',
-      username: '',
-      email: '',
-      password: generateRandomPassword(),
-      organization_id: initialOrgId,
-      level: 'admin',
-      role_id: initialRoleId,
-      status: 'active',
-    })
-    setShowPassword(false)
-    setIsFormModalOpen(true)
-  }
-
-  const openEditModal = (mem: OrganizationMembership) => {
-    setEditingMem(mem)
-    setFormData({
-      name: mem.user?.name || '',
-      username: mem.user?.username || '',
-      email: mem.user?.email || '',
-      password: '',
-      organization_id: mem.organization_id,
-      level: mem.level || 'admin',
-      role_id: mem.role_id,
-      status: mem.status,
-    })
-    setShowPassword(false)
-    setIsFormModalOpen(true)
-  }
-
-  const handleSaveForm = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!formData.name.trim() || !formData.email.trim() || !formData.organization_id) {
-      error('Validasi Gagal', 'Nama, Email, dan Organisasi wajib diisi.')
-      return
-    }
-
-    try {
-      if (editingMem) {
-        // Update user & membership
-        if (editingMem.user_id) {
-          const userUpdate: Partial<User> = {
-            name: formData.name,
-            username: formData.username || undefined,
-            email: formData.email,
-          }
-          if (formData.password.trim()) {
-            userUpdate.password_hash = formData.password.trim()
-          }
-          await dataService.updateUser(editingMem.user_id, userUpdate)
-        }
-        await dataService.updateMembership(
-          editingMem.id,
-          {
-            organization_id: formData.organization_id,
-            role_id: formData.role_id,
-            level: formData.level,
-            status: formData.status,
-          },
-          user
-        )
-        success('Data Diperbarui', `Akun ${formData.name} berhasil diperbarui.`)
-        setIsFormModalOpen(false)
-        loadData()
-      } else {
-        // Create new user & membership
-        const chosenPassword = formData.password.trim() || generateRandomPassword()
-        const rawUsername = formData.username.trim() || formData.email.split('@')[0]
-        const cleanUsername = rawUsername.toLowerCase().replace(/[^a-z0-9_.]/g, '')
-
-        const newUser = await dataService.createUser({
-          name: formData.name,
-          username: cleanUsername,
-          email: formData.email.trim(),
-          password_hash: chosenPassword,
-          must_change_password: true,
-          role: formData.level === 'admin' ? 'admin' : 'member',
-          status: formData.status,
-        })
-
-        await dataService.createMembership(
-          {
-            user_id: newUser.id,
-            organization_id: formData.organization_id,
-            role_id: formData.role_id,
-            level: formData.level,
-            status: formData.status,
-          },
-          user
-        )
-
-        const selectedOrg = organizations.find((o) => o.id === formData.organization_id)
-        const selectedRole = roles.find((r) => r.id === formData.role_id)
-
-        // Close form & open credential handover card
-        setIsFormModalOpen(false)
-        setCredentialCardData({
-          name: formData.name,
-          username: cleanUsername,
-          email: formData.email.trim(),
-          password: chosenPassword,
-          organizationName: selectedOrg?.name || 'Organisasi Terkait',
-          level: formData.level === 'admin' ? 'Admin Organisasi' : 'Anggota Organisasi',
-          roleName: selectedRole?.name || 'Pengurus',
-        })
-        setIsCredentialModalOpen(true)
-        loadData()
-      }
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Gagal menyimpan akun'
-      error('Gagal', msg)
-    }
-  }
 
   // Copy WhatsApp Template Handover
   const handleCopyWhatsApp = (card: NonNullable<typeof credentialCardData>) => {
-    const text = `*AKUN AKSES SISTEM ORGANISASI*
+    const text = `*AKUN AKSES JABATAN RESMI*
 Halo *${card.name}*, berikut akun akses Anda:
 
 🔗 Tautan Login : ${window.location.origin}/login
-🏢 Organisasi   : ${card.organizationName}
-🔰 Tingkat / Peran : ${card.level} - ${card.roleName}
+💼 Jabatan      : ${card.organizationName}
+🔰 Hak Akses    : ${card.roleName} (${card.level})
 👤 Username     : ${card.username || card.email}
 🔑 Kata Sandi   : ${card.password}
 
@@ -413,9 +593,13 @@ Halo *${card.name}*, berikut akun akses Anda:
         username: resetMem.user?.username || resetMem.user?.email || '',
         email: resetMem.user?.email || '',
         password: newPass,
-        organizationName: memOrg?.name || 'Organisasi Terkait',
-        level: (resetMem.level || 'admin') === 'admin' ? 'Admin Organisasi' : 'Anggota Organisasi',
-        roleName: memRole?.name || 'Pengurus',
+        organizationName: memOrg?.name || '— Belum Ditugaskan (Pool Akun) —',
+        level: resetMem.organization_id
+          ? (resetMem.level || 'admin') === 'admin'
+            ? 'Admin Organisasi'
+            : 'Anggota Organisasi'
+          : 'Akun Pengguna Bebas (Unassigned)',
+        roleName: resetMem.organization_id ? memRole?.name || 'Pengurus' : 'Belum Ditugaskan',
       })
       setIsCredentialModalOpen(true)
       loadData()
@@ -442,23 +626,85 @@ Halo *${card.name}*, berikut akun akses Anda:
     }
   }
 
-  // Move Organization Execution
+  // Move or Assign Organization Execution
   const handleConfirmMoveOrg = async () => {
     if (!moveOrgMem) return
+    if (!moveOrgForm.targetOrgId) {
+      error('Validasi Gagal', 'Silakan pilih organisasi tujuan penugasan.')
+      return
+    }
     try {
-      await dataService.moveUserOrganization(
-        moveOrgMem.id,
-        moveOrgForm.targetOrgId,
-        moveOrgForm.targetRoleId,
-        moveOrgForm.level,
-        user
-      )
-      success('Organisasi Dipindahkan', `Akun ${moveOrgMem.user?.name} berhasil dipindahkan ke organisasi baru.`)
+      if (moveOrgMem.organization_id && !moveOrgMem.id.startsWith('unassigned-')) {
+        await dataService.moveUserOrganization(
+          moveOrgMem.id,
+          moveOrgForm.targetOrgId,
+          moveOrgForm.targetRoleId,
+          moveOrgForm.level,
+          user
+        )
+        success('Organisasi Dipindahkan', `Akun ${moveOrgMem.user?.name} berhasil dipindahkan ke organisasi baru.`)
+      } else {
+        // Akun belum ditugaskan (Unassigned) -> buatkan membership baru
+        await dataService.createMembership(
+          {
+            user_id: moveOrgMem.user_id,
+            organization_id: moveOrgForm.targetOrgId,
+            role_id: moveOrgForm.targetRoleId || roles[0]?.id || 'role-admin-org',
+            level: moveOrgForm.level,
+            status: 'active',
+          },
+          user
+        )
+        success('Penugasan Berhasil', `Akun ${moveOrgMem.user?.name} berhasil ditugaskan ke organisasi.`)
+      }
       setMoveOrgMem(null)
       loadData()
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Gagal memindahkan organisasi'
+      const msg = err instanceof Error ? err.message : 'Gagal memproses penugasan organisasi'
       error('Gagal', msg)
+    }
+  }
+
+  // Single Delete Account Execution
+  const handleConfirmDeleteSingle = async () => {
+    if (!deleteMem || !deleteMem.user_id) return
+    try {
+      await dataService.deleteAccount(deleteMem.user_id, user)
+      success('Akun Dihapus', `Akun ${deleteMem.user?.name || 'Pengguna'} berhasil dihapus dari sistem.`)
+      setDeleteMem(null)
+      loadData()
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Gagal menghapus akun pengguna'
+      error('Gagal Menghapus', msg)
+    }
+  }
+
+  // Bulk Delete Accounts Execution
+  const handleBulkDeleteAccounts = async (selectedMembershipIds: string[]) => {
+    // Cari user_id dari list membership yang dipilih
+    const targetUserIds = selectedMembershipIds
+      .map((mId) => {
+        const found = memberships.find((m) => m.id === mId)
+        return found?.user_id
+      })
+      .filter((uId): uId is string => Boolean(uId))
+
+    if (targetUserIds.length === 0) {
+      error('Gagal', 'Tidak ada data akun yang valid untuk dihapus.')
+      return
+    }
+
+    try {
+      const result = await dataService.deleteAccounts(targetUserIds, user)
+      let msg = `${result.deletedCount} akun pengguna berhasil dihapus.`
+      if (result.skippedCount > 0) {
+        msg += ` (${result.skippedCount} akun Superadmin / akun aktif dilindungi dan dilewati)`
+      }
+      success('Hapus Massal Berhasil', msg)
+      loadData()
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Gagal memproses penghapusan massal akun'
+      error('Gagal Hapus Massal', msg)
     }
   }
 
@@ -472,15 +718,20 @@ Halo *${card.name}*, berikut akun akses Anda:
     if (q && !uName.includes(q) && !uEmail.includes(q) && !uUsername.includes(q)) {
       return false
     }
-    if (selectedOrgFilter !== 'all' && m.organization_id !== selectedOrgFilter) {
+    if (selectedOrgFilter === 'unassigned') {
+      if (m.organization_id) return false
+    } else if (selectedOrgFilter === 'assigned') {
+      if (!m.organization_id) return false
+    } else if (selectedOrgFilter !== 'all' && m.organization_id !== selectedOrgFilter) {
       return false
     }
     const memLevel = m.level || 'admin'
     if (selectedLevelFilter !== 'all' && memLevel !== selectedLevelFilter) {
       return false
     }
-    if (selectedRoleFilter !== 'all' && m.role_id !== selectedRoleFilter) {
-      return false
+    if (selectedRoleFilter !== 'all') {
+      if (selectedRoleFilter === 'none' && m.role_id) return false
+      if (selectedRoleFilter !== 'none' && m.role_id !== selectedRoleFilter) return false
     }
     const isActive = m.user?.status === 'active' && m.status === 'active'
     if (selectedStatusFilter === 'active' && !isActive) return false
@@ -492,20 +743,20 @@ Halo *${card.name}*, berikut akun akses Anda:
   const columns: ColumnDef<OrganizationMembership>[] = [
     {
       key: 'user.name',
-      label: 'Nama Akun',
+      label: 'Pengguna',
       sortable: true,
       render: (mem) => {
         const initial = (mem.user?.name || 'U').slice(0, 2).toUpperCase()
         return (
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center font-bold text-xs shrink-0 ring-1 ring-amber-500/20">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center font-bold text-xs shrink-0 ring-1 ring-amber-500/20">
               {initial}
             </div>
             <div className="min-w-0">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5">
                 <span className="font-semibold text-fg text-sm truncate">{mem.user?.name}</span>
                 {mem.user?.is_superadmin && (
-                  <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-amber-500/20 text-amber-800 dark:text-amber-300">
+                  <span className="px-2 py-0.5 rounded-md text-xs font-medium bg-amber-500/10 text-amber-700 dark:text-amber-300 ring-1 ring-amber-500/20">
                     Superadmin
                   </span>
                 )}
@@ -513,6 +764,12 @@ Halo *${card.name}*, berikut akun akses Anda:
               <p className="text-xs text-fg-muted truncate">
                 @{mem.user?.username || mem.user?.email?.split('@')[0]}
               </p>
+              {mem.user?.holder_name && (
+                <div className="mt-1 flex items-center gap-1 text-xs text-fg-muted">
+                  <span>Pemegang:</span>
+                  <span className="font-medium text-fg">{mem.user.holder_name}</span>
+                </div>
+              )}
             </div>
           </div>
         )
@@ -520,24 +777,40 @@ Halo *${card.name}*, berikut akun akses Anda:
     },
     {
       key: 'user.email',
-      label: 'Email Pengguna',
+      label: 'Email',
       render: (mem) => (
         <span className="text-xs font-mono text-fg-muted">{mem.user?.email || '-'}</span>
       ),
     },
     {
       key: 'organization',
-      label: 'Organisasi',
+      label: 'Jabatan / Penugasan',
       sortable: true,
-      render: (mem) => (
-        <span className="text-xs font-medium text-fg">{mem.organization?.name || 'Lintas Organisasi'}</span>
-      ),
+      render: (mem) => {
+        if (mem.organization_id && mem.organization) {
+          return (
+            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-medium bg-emerald-500/10 text-emerald-700 dark:text-emerald-300">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+              {mem.organization.name}
+            </span>
+          )
+        }
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-medium bg-amber-500/10 text-amber-700 dark:text-amber-300">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+            Belum Ditugaskan
+          </span>
+        )
+      },
     },
     {
       key: 'level',
       label: 'Tingkat',
       sortable: true,
       render: (mem) => {
+        if (!mem.organization_id) {
+          return <Badge variant="gray">Pool</Badge>
+        }
         const isAdm = (mem.level || 'admin') === 'admin'
         return (
           <Badge variant={isAdm ? 'primary' : 'gray'}>
@@ -548,12 +821,17 @@ Halo *${card.name}*, berikut akun akses Anda:
     },
     {
       key: 'role',
-      label: 'Peran (Role)',
-      render: (mem) => (
-        <span className="text-xs font-semibold px-2 py-0.5 rounded bg-surface-muted border border-line text-fg">
-          {mem.role?.name || 'Pengurus'}
-        </span>
-      ),
+      label: 'Peran',
+      render: (mem) => {
+        if (!mem.organization_id) {
+          return <span className="text-xs text-fg-muted">—</span>
+        }
+        return (
+          <span className="text-xs font-medium px-1.5 py-0.5 rounded bg-surface-muted text-fg">
+            {mem.role?.name || 'Pengurus'}
+          </span>
+        )
+      },
     },
     {
       key: 'status',
@@ -571,22 +849,35 @@ Halo *${card.name}*, berikut akun akses Anda:
     {
       key: 'id',
       label: 'Aksi',
-      render: (mem) => (
-        <ActionMenu
-          membership={mem}
-          onEdit={openEditModal}
-          onResetPassword={(m) => setResetMem(m)}
-          onToggleStatus={(m) => setStatusToggleMem(m)}
-          onMoveOrg={(m) => {
-            setMoveOrgMem(m)
-            setMoveOrgForm({
-              targetOrgId: m.organization_id,
-              targetRoleId: m.role_id,
-              level: m.level || 'anggota',
-            })
-          }}
-        />
-      ),
+      render: (mem) => {
+        const canHandover = canManageAccountHandover(user, mem.user_id, mem.organization_id, organizations)
+        return (
+          <ActionMenu
+            membership={mem}
+            canHandover={canHandover}
+            onEdit={handleEditAccount}
+            onResetPassword={(m) => setResetMem(m)}
+            onToggleStatus={(m) => setStatusToggleMem(m)}
+            onMoveOrg={(m) => {
+              setMoveOrgMem(m)
+              setMoveOrgForm({
+                targetOrgId: m.organization_id || organizations[0]?.id || '',
+                targetRoleId: m.role_id || roles[0]?.id || 'role-admin-org',
+                level: m.level || 'anggota',
+              })
+            }}
+            onHandover={openHandoverModal}
+            onDelete={(m) => setDeleteMem(m)}
+            onSwitchAccount={async (m) => {
+              if (m.user_id) {
+                await switchPersona(m.user_id)
+                success('Beralih Akun', `Anda sekarang login sebagai ${m.user?.name || 'Pengguna'}.`)
+                navigate('/')
+              }
+            }}
+          />
+        )
+      },
     },
   ]
 
@@ -601,37 +892,67 @@ Halo *${card.name}*, berikut akun akses Anda:
 
         <Button
           variant="primary"
-          onClick={openCreateModal}
+          onClick={() => navigate('/accounts/create')}
           className="shrink-0 self-start sm:self-auto"
         >
-          <HeroPlus className="w-4 h-4 mr-2" />
-          Tambah Akun
+          <HeroPlus className="w-4 h-4 mr-1.5" />
+          Buat Akun
         </Button>
       </div>
 
       {/* Filter Toolbar */}
       <div className="p-3 sm:p-4 rounded-xl bg-surface ring-1 ring-line shadow-xs">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5 sm:gap-3">
+        {/* Mobile View: Search Bar + Filter Trigger Button (< sm) */}
+        <div className="flex sm:hidden items-center gap-2">
+          <div className="flex-1">
+            <Input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Cari akun..."
+              className="text-base sm:text-xs min-h-[44px]"
+            />
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsMobileFiltersOpen(true)}
+            className={`min-h-[44px] px-3.5 flex items-center justify-center gap-1.5 rounded-lg border transition cursor-pointer text-xs font-semibold shrink-0 ${
+              (selectedOrgFilter !== 'all' || selectedLevelFilter !== 'all' || selectedRoleFilter !== 'all' || selectedStatusFilter !== 'all')
+                ? 'bg-amber-500/10 border-amber-500/40 text-amber-600 dark:text-amber-400'
+                : 'bg-surface border-line text-fg hover:bg-hover-bg'
+            }`}
+          >
+            <HeroFunnel className="w-4 h-4" />
+            <span>Filter</span>
+            {(selectedOrgFilter !== 'all' || selectedLevelFilter !== 'all' || selectedRoleFilter !== 'all' || selectedStatusFilter !== 'all') && (
+              <span className="w-2 h-2 rounded-full bg-amber-500" />
+            )}
+          </button>
+        </div>
+
+        {/* Desktop View: Grid 5 Kolom (>= sm) */}
+        <div className="hidden sm:grid sm:grid-cols-2 lg:grid-cols-5 gap-2.5 sm:gap-3">
           {/* Search */}
           <div className="lg:col-span-1">
             <Input
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Cari akun..."
-              className="text-xs h-9"
+              className="text-base sm:text-xs min-h-[44px] sm:min-h-[2.25rem]"
             />
           </div>
 
-          {/* Org Filter */}
+          {/* Org / Jabatan Filter */}
           <div>
             <Select
               value={selectedOrgFilter}
               onChange={(e) => setSelectedOrgFilter(e.target.value)}
               options={[
-                { value: 'all', label: 'Semua Organisasi' },
-                ...organizations.map((o) => ({ value: o.id, label: o.name })),
+                { value: 'all', label: 'Semua Status Penugasan' },
+                { value: 'assigned', label: '✓ Sudah Ditugaskan' },
+                { value: 'unassigned', label: '○ Belum Ditugaskan' },
+                ...organizations.map((o) => ({ value: o.id, label: `Jabatan: ${o.name}` })),
               ]}
-              className="text-xs h-9"
+              className="text-base sm:text-xs"
             />
           </div>
 
@@ -642,10 +963,10 @@ Halo *${card.name}*, berikut akun akses Anda:
               onChange={(e) => setSelectedLevelFilter(e.target.value)}
               options={[
                 { value: 'all', label: 'Semua Tingkat' },
-                { value: 'admin', label: 'Admin Organisasi' },
-                { value: 'anggota', label: 'Anggota Organisasi' },
+                { value: 'admin', label: 'Admin Jabatan' },
+                { value: 'anggota', label: 'Anggota / Staf' },
               ]}
-              className="text-xs h-9"
+              className="text-base sm:text-xs"
             />
           </div>
 
@@ -656,9 +977,10 @@ Halo *${card.name}*, berikut akun akses Anda:
               onChange={(e) => setSelectedRoleFilter(e.target.value)}
               options={[
                 { value: 'all', label: 'Semua Peran' },
+                { value: 'none', label: 'Tanpa Peran (Unassigned)' },
                 ...roles.map((r) => ({ value: r.id, label: r.name })),
               ]}
-              className="text-xs h-9"
+              className="text-base sm:text-xs"
             />
           </div>
 
@@ -672,11 +994,118 @@ Halo *${card.name}*, berikut akun akses Anda:
                 { value: 'active', label: 'Hanya Aktif' },
                 { value: 'inactive', label: 'Hanya Nonaktif' },
               ]}
-              className="text-xs h-9"
+              className="text-base sm:text-xs"
             />
           </div>
         </div>
+
+        {/* Active Filter Chips / Reset Indicator on Mobile */}
+        {(selectedOrgFilter !== 'all' || selectedLevelFilter !== 'all' || selectedRoleFilter !== 'all' || selectedStatusFilter !== 'all') && (
+          <div className="flex sm:hidden items-center justify-between pt-2.5 mt-2.5 border-t border-line text-xs">
+            <span className="text-fg-muted">Filter aktif diterapkan</span>
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedOrgFilter('all')
+                setSelectedLevelFilter('all')
+                setSelectedRoleFilter('all')
+                setSelectedStatusFilter('all')
+              }}
+              className="text-primary-600 dark:text-primary-400 font-semibold hover:underline cursor-pointer"
+            >
+              Reset Semua
+            </button>
+          </div>
+        )}
       </div>
+
+      {/* iOS Mobile Filter Sheet Modal */}
+      {isMobileFiltersOpen && (
+        <Modal
+          isOpen={isMobileFiltersOpen}
+          onClose={() => setIsMobileFiltersOpen(false)}
+          title="Filter Akun Pengguna"
+          size="sm"
+          footer={
+            <div className="w-full flex items-center justify-between gap-2">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => {
+                  setSelectedOrgFilter('all')
+                  setSelectedLevelFilter('all')
+                  setSelectedRoleFilter('all')
+                  setSelectedStatusFilter('all')
+                }}
+              >
+                Reset
+              </Button>
+              <Button
+                type="button"
+                variant="primary"
+                onClick={() => setIsMobileFiltersOpen(false)}
+              >
+                Terapkan
+              </Button>
+            </div>
+          }
+        >
+          <div className="space-y-4">
+            <div>
+              <label className="block text-xs font-semibold text-fg mb-1.5">Penugasan Jabatan</label>
+              <Select
+                value={selectedOrgFilter}
+                onChange={(e) => setSelectedOrgFilter(e.target.value)}
+                options={[
+                  { value: 'all', label: 'Semua Status Penugasan' },
+                  { value: 'assigned', label: '✓ Sudah Ditugaskan' },
+                  { value: 'unassigned', label: '○ Belum Ditugaskan' },
+                  ...organizations.map((o) => ({ value: o.id, label: `Jabatan: ${o.name}` })),
+                ]}
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-fg mb-1.5">Tingkat Penugasan</label>
+              <Select
+                value={selectedLevelFilter}
+                onChange={(e) => setSelectedLevelFilter(e.target.value)}
+                options={[
+                  { value: 'all', label: 'Semua Tingkat' },
+                  { value: 'admin', label: 'Admin Jabatan' },
+                  { value: 'anggota', label: 'Anggota / Staf' },
+                ]}
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-fg mb-1.5">Peran Akses</label>
+              <Select
+                value={selectedRoleFilter}
+                onChange={(e) => setSelectedRoleFilter(e.target.value)}
+                options={[
+                  { value: 'all', label: 'Semua Peran' },
+                  { value: 'none', label: 'Tanpa Peran (Unassigned)' },
+                  ...roles.map((r) => ({ value: r.id, label: r.name })),
+                ]}
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-fg mb-1.5">Status Akun</label>
+              <Select
+                value={selectedStatusFilter}
+                onChange={(e) => setSelectedStatusFilter(e.target.value)}
+                options={[
+                  { value: 'all', label: 'Semua Status' },
+                  { value: 'active', label: 'Hanya Aktif' },
+                  { value: 'inactive', label: 'Hanya Nonaktif' },
+                ]}
+              />
+            </div>
+          </div>
+        </Modal>
+      )}
 
       {/* Main Table */}
       <DataTable
@@ -685,16 +1114,31 @@ Halo *${card.name}*, berikut akun akses Anda:
         isLoading={isLoading}
         searchPlaceholder="Filter akun..."
         searchKey="user.name"
-        renderCard={(mem) => {
+        onBulkDelete={handleBulkDeleteAccounts}
+        renderCard={(mem, isSelected, onSelect, isSelectionMode) => {
           const initial = (mem.user?.name || 'U').slice(0, 2).toUpperCase()
           const isActive = mem.user?.status === 'active' && mem.status === 'active'
           const isAdm = (mem.level || 'admin') === 'admin'
 
           return (
-            <div className="p-4 rounded-xl bg-surface border border-line shadow-xs space-y-3">
-              {/* Top: Avatar, Name, Username, and Action Menu */}
+            <div
+              className={cn(
+                'p-4 rounded-xl bg-surface border transition-colors space-y-3',
+                isSelected ? 'border-primary-500 bg-primary-500/5 ring-1 ring-primary-500' : 'border-line shadow-xs'
+              )}
+            >
+              {/* Top: Checkbox (saat mode seleksi), Avatar, Name, Username, and Action Menu */}
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center gap-3 min-w-0">
+                  {isSelectionMode && (
+                    <div className="shrink-0 pt-0.5">
+                      <Checkbox
+                        checked={isSelected}
+                        onChange={(e) => onSelect(e.target.checked)}
+                        aria-label={`Pilih akun ${mem.user?.name}`}
+                      />
+                    </div>
+                  )}
                   <div className="w-10 h-10 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center font-bold text-xs shrink-0 ring-1 ring-amber-500/20">
                     {initial}
                   </div>
@@ -717,17 +1161,20 @@ Halo *${card.name}*, berikut akun akses Anda:
                 <div className="shrink-0 -mr-1 -mt-1">
                   <ActionMenu
                     membership={mem}
-                    onEdit={openEditModal}
+                    canHandover={canManageAccountHandover(user, mem.user_id, mem.organization_id, organizations)}
+                    onEdit={handleEditAccount}
                     onResetPassword={(m) => setResetMem(m)}
                     onToggleStatus={(m) => setStatusToggleMem(m)}
                     onMoveOrg={(m) => {
                       setMoveOrgMem(m)
                       setMoveOrgForm({
-                        targetOrgId: m.organization_id,
-                        targetRoleId: m.role_id,
+                        targetOrgId: m.organization_id || organizations[0]?.id || '',
+                        targetRoleId: m.role_id || roles[0]?.id || 'role-admin-org',
                         level: m.level || 'anggota',
                       })
                     }}
+                    onHandover={openHandoverModal}
+                    onDelete={(m) => setDeleteMem(m)}
                   />
                 </div>
               </div>
@@ -737,19 +1184,43 @@ Halo *${card.name}*, berikut akun akses Anda:
                 {mem.user?.email || '-'}
               </div>
 
+              {/* Status Badge Penugasan */}
+              <div className="pt-1">
+                {mem.organization_id && mem.organization ? (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-500/20">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    Ditugaskan: {mem.organization.name}
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold bg-amber-500/10 text-amber-700 dark:text-amber-300 ring-1 ring-amber-500/20">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                    Belum Ditugaskan
+                  </span>
+                )}
+              </div>
+
+              {/* Pemegang Akun Mobile Display */}
+              <div className="flex items-center justify-between text-xs pt-1 border-t border-line/50">
+                <span className="text-fg-muted">Pemegang (Holder):</span>
+                <span className="font-semibold text-fg">
+                  {mem.user?.holder_name || <span className="italic text-fg-muted font-normal">Belum ditunjuk</span>}
+                </span>
+              </div>
+
               {/* Divider */}
               <div className="border-t border-line-divider" />
 
               {/* Bottom Info: Organization, Role/Level, Status */}
               <div className="flex items-center justify-between gap-2 flex-wrap text-xs">
                 <div className="min-w-0">
-                  <p className="font-medium text-fg truncate">
-                    {mem.organization?.name || 'Lintas Organisasi'}
-                  </p>
-                  <div className="flex items-center gap-1.5 mt-0.5 text-fg-muted">
-                    <span>{isAdm ? 'Admin' : 'Anggota'}</span>
-                    <span>•</span>
-                    <span className="font-medium text-fg">{mem.role?.name || 'Pengurus'}</span>
+                  <div className="flex items-center gap-1.5 text-fg-muted">
+                    <span>{mem.organization_id ? (isAdm ? 'Admin' : 'Anggota') : 'Pool Akun'}</span>
+                    {mem.organization_id && (
+                      <>
+                        <span>•</span>
+                        <span className="font-medium text-fg">{mem.role?.name || 'Pengurus'}</span>
+                      </>
+                    )}
                   </div>
                 </div>
 
@@ -762,171 +1233,32 @@ Halo *${card.name}*, berikut akun akses Anda:
         }}
       />
 
-      {/* Form Modal (Create / Edit) */}
-      <Modal
-        isOpen={isFormModalOpen}
-        onClose={() => setIsFormModalOpen(false)}
-        title={editingMem ? 'Ubah Data Akun' : 'Terbitkan Akun Pengguna Baru'}
-        size="lg"
-      >
-        <form noValidate onSubmit={handleSaveForm} className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-medium text-fg mb-1">
-                Nama Lengkap <span className="text-red-500">*</span>
-              </label>
-              <Input
-                required
-                value={formData.name}
-                onChange={(e) => {
-                  const val = e.target.value
-                  setFormData((prev) => ({
-                    ...prev,
-                    name: val,
-                    username: prev.username || val.toLowerCase().replace(/[^a-z0-9]/g, ''),
-                  }))
-                }}
-                placeholder="Contoh: Budi Santoso"
-              />
-            </div>
 
-            <div>
-              <label className="block text-xs font-medium text-fg mb-1">
-                Alamat Email <span className="text-red-500">*</span>
-              </label>
-              <Input
-                type="email"
-                required
-                value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                placeholder="budi@organisasi.id"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-medium text-fg mb-1">
-                Username Akses <span className="text-red-500">*</span>
-              </label>
-              <Input
-                required
-                value={formData.username}
-                onChange={(e) => setFormData({ ...formData, username: e.target.value.toLowerCase().replace(/[^a-z0-9_.]/g, '') })}
-                placeholder="budisantoso"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-medium text-fg mb-1">
-                Organisasi Penugasan <span className="text-red-500">*</span>
-              </label>
-              <Select
-                value={formData.organization_id}
-                onChange={(e) => setFormData({ ...formData, organization_id: e.target.value })}
-                options={organizations.map((o) => ({ value: o.id, label: o.name }))}
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-medium text-fg mb-1">
-                Tingkat Akun <span className="text-red-500">*</span>
-              </label>
-              <Select
-                value={formData.level}
-                onChange={(e) => setFormData({ ...formData, level: e.target.value as 'admin' | 'anggota' })}
-                options={[
-                  { value: 'admin', label: 'Admin Organisasi' },
-                  { value: 'anggota', label: 'Anggota Organisasi' },
-                ]}
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-medium text-fg mb-1">
-                Peran & Hak Akses (Role) <span className="text-red-500">*</span>
-              </label>
-              <Select
-                value={formData.role_id}
-                onChange={(e) => setFormData({ ...formData, role_id: e.target.value })}
-                options={roles.map((r) => ({ value: r.id, label: r.name }))}
-              />
-            </div>
-          </div>
-
-          {/* Password field with Generator */}
-          <div className="p-3.5 rounded-xl bg-surface-muted border border-line space-y-2">
-            <div className="flex items-center justify-between">
-              <label className="block text-xs font-medium text-fg">
-                {editingMem ? 'Ganti Kata Sandi (Opsional)' : 'Kata Sandi Awal Sementara'}
-              </label>
-              <button
-                type="button"
-                onClick={() => setFormData({ ...formData, password: generateRandomPassword() })}
-                className="text-[11px] text-amber-600 dark:text-amber-400 font-semibold hover:underline flex items-center gap-1 cursor-pointer"
-              >
-                <HeroArrowPath className="w-3.5 h-3.5" /> Acak Password Baru
-              </button>
-            </div>
-
-            <div className="relative flex items-center">
-              <Input
-                type={showPassword ? 'text' : 'password'}
-                value={formData.password}
-                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                placeholder={editingMem ? 'Biarkan kosong jika tidak ingin diubah' : 'Password...'}
-                className="pr-10 font-mono text-xs"
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 text-fg-muted hover:text-fg cursor-pointer"
-                title={showPassword ? 'Sembunyikan' : 'Tampilkan'}
-              >
-                {showPassword ? <HeroEyeSlash className="w-4 h-4" /> : <HeroEye className="w-4 h-4" />}
-              </button>
-            </div>
-            {!editingMem && (
-              <p className="text-[11px] text-fg-muted">
-                Pengguna akan diwajibkan memperbarui kata sandi ini saat pertama kali berhasil login.
-              </p>
-            )}
-          </div>
-
-          <div className="flex items-center justify-end gap-3 pt-3 border-t border-line">
-            <Button type="button" variant="secondary" onClick={() => setIsFormModalOpen(false)}>
-              Batal
-            </Button>
-            <Button type="submit" variant="primary">
-              <HeroCheck className="w-4 h-4 mr-1.5" />
-              {editingMem ? 'Perbarui Akun' : 'Terbitkan Akun'}
-            </Button>
-          </div>
-        </form>
-      </Modal>
 
       {/* Credential Handover Card Modal */}
       {credentialCardData && (
         <Modal
           isOpen={isCredentialModalOpen}
           onClose={() => setIsCredentialModalOpen(false)}
-          title="Kredensial Akun Siap Diserahkan"
+          title="Kredensial Akun"
           size="md"
         >
           <div className="space-y-4">
             <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-900 dark:text-amber-300">
-              Akun berhasil diterbitkan/direset. Salin informasi di bawah untuk dikirimkan langsung ke pengguna melalui WhatsApp.
+              Salin informasi di bawah untuk diserahkan langsung ke pengguna via pesan instan.
             </div>
 
-            <div className="p-4 rounded-xl bg-surface-muted border border-line font-mono text-xs text-fg space-y-1.5 select-all">
+            <div className="p-4 rounded-xl bg-surface-muted border border-line font-mono text-xs text-fg space-y-2 select-all">
               <p className="font-bold text-amber-600 dark:text-amber-400 mb-2">
                 *AKUN AKSES SISTEM ORGANISASI*
               </p>
               <p>Halo *{credentialCardData.name}*, berikut akun akses Anda:</p>
-              <p className="pt-2">🔗 Tautan Login : {window.location.origin}/login</p>
+              <p className="pt-1">🔗 Tautan Login : {window.location.origin}/login</p>
               <p>🏢 Organisasi   : {credentialCardData.organizationName}</p>
               <p>🔰 Tingkat / Peran : {credentialCardData.level} - {credentialCardData.roleName}</p>
               <p>👤 Username     : {credentialCardData.username || credentialCardData.email}</p>
               <p>🔑 Kata Sandi   : {credentialCardData.password}</p>
-              <p className="pt-2 text-[11px] text-fg-muted italic">
+              <p className="pt-2 text-xs text-fg-muted italic">
                 *Catatan:* Demi keamanan, Anda akan diminta memperbarui kata sandi saat pertama kali masuk.
               </p>
             </div>
@@ -948,20 +1280,16 @@ Halo *${card.name}*, berikut akun akses Anda:
         </Modal>
       )}
 
-      {/* Reset Password Confirmation Modal */}
+      {/* Reset Password Confirmation Modal - Aligned with UI_CONSISTENCY.md */}
       {resetMem && (
         <Modal
           isOpen={!!resetMem}
           onClose={() => setResetMem(null)}
           title="Konfirmasi Reset Kata Sandi"
+          description={`Reset kata sandi untuk akun pengguna ${resetMem.user?.name}.`}
           size="sm"
-        >
-          <div className="space-y-4">
-            <p className="text-xs text-fg leading-relaxed">
-              Yakin ingin mereset kata sandi untuk akun <strong>{resetMem.user?.name}</strong>?
-              Sistem akan membuat kata sandi acak baru dan mewajibkan pengguna memperbaruinya saat login berikutnya.
-            </p>
-            <div className="flex items-center justify-end gap-2 pt-2">
+          footer={
+            <div className="flex items-center justify-end gap-3 w-full">
               <Button type="button" variant="secondary" onClick={() => setResetMem(null)}>
                 Batal
               </Button>
@@ -970,32 +1298,24 @@ Halo *${card.name}*, berikut akun akses Anda:
                 Reset & Tampilkan Sandi
               </Button>
             </div>
-          </div>
+          }
+        >
+          <p className="text-xs text-fg leading-relaxed">
+            Sistem akan menerbitkan kata sandi acak baru dan mewajibkan pengguna memperbaruinya saat login berikutnya.
+          </p>
         </Modal>
       )}
 
-      {/* Toggle Status Confirmation Modal */}
+      {/* Toggle Status Confirmation Modal - Aligned with UI_CONSISTENCY.md */}
       {statusToggleMem && (
         <Modal
           isOpen={!!statusToggleMem}
           onClose={() => setStatusToggleMem(null)}
-          title={statusToggleMem.status === 'active' ? 'Nonaktifkan Akun' : 'Aktifkan Kembali Akun'}
+          title={statusToggleMem.status === 'active' ? 'Nonaktifkan Akun Pengguna' : 'Aktifkan Kembali Akun'}
+          description={`Ubah status operasional akun untuk ${statusToggleMem.user?.name}.`}
           size="sm"
-        >
-          <div className="space-y-4">
-            <p className="text-xs text-fg leading-relaxed">
-              {statusToggleMem.status === 'active' ? (
-                <>
-                  Yakin ingin menonaktifkan akun <strong>{statusToggleMem.user?.name}</strong>?
-                  Pengguna tidak akan dapat login ke sistem, namun seluruh data historis tetap aman tersimpan.
-                </>
-              ) : (
-                <>
-                  Aktifkan kembali akses login untuk akun <strong>{statusToggleMem.user?.name}</strong>?
-                </>
-              )}
-            </p>
-            <div className="flex items-center justify-end gap-2 pt-2">
+          footer={
+            <div className="flex items-center justify-end gap-3 w-full">
               <Button type="button" variant="secondary" onClick={() => setStatusToggleMem(null)}>
                 Batal
               </Button>
@@ -1004,65 +1324,419 @@ Halo *${card.name}*, berikut akun akses Anda:
                 variant={statusToggleMem.status === 'active' ? 'danger' : 'primary'}
                 onClick={handleConfirmToggleStatus}
               >
-                {statusToggleMem.status === 'active' ? 'Nonaktifkan' : 'Aktifkan'}
+                {statusToggleMem.status === 'active' ? 'Nonaktifkan Akun' : 'Aktifkan Akun'}
               </Button>
             </div>
-          </div>
+          }
+        >
+          <p className="text-xs text-fg leading-relaxed">
+            {statusToggleMem.status === 'active' ? (
+              <>
+                Pengguna tidak akan dapat login ke dalam sistem, namun seluruh data historis dan riwayat penugasan tetap aman tersimpan.
+              </>
+            ) : (
+              <>
+                Akses login akun pengguna akan segera dipulihkan sehingga dapat kembali mengakses sistem.
+              </>
+            )}
+          </p>
         </Modal>
       )}
 
-      {/* Move Organization Modal */}
+      {/* Move / Assign Organization Modal - Aligned with UI_CONSISTENCY.md */}
       {moveOrgMem && (
         <Modal
           isOpen={!!moveOrgMem}
           onClose={() => setMoveOrgMem(null)}
-          title={`Pindah Organisasi: ${moveOrgMem.user?.name}`}
+          title={
+            moveOrgMem.organization_id
+              ? `Pindah Penugasan Jabatan: ${moveOrgMem.user?.name}`
+              : `Tugaskan ke Jabatan: ${moveOrgMem.user?.name}`
+          }
+          description={
+            moveOrgMem.organization_id
+              ? 'Pindahkan penugasan akun ini ke jabatan lain dan sesuaikan peran barunya.'
+              : 'Tugaskan akun ini ke posisi jabatan dan tentukan peran serta hak aksesnya.'
+          }
           size="md"
-        >
-          <div className="space-y-4">
-            <p className="text-xs text-fg-muted">
-              Pindahkan akun ini ke organisasi lain dan sesuaikan peran barunya.
-            </p>
-
-            <div className="space-y-3">
-              <div>
-                <label className="block text-xs font-medium text-fg mb-1">Organisasi Tujuan</label>
-                <Select
-                  value={moveOrgForm.targetOrgId}
-                  onChange={(e) => setMoveOrgForm({ ...moveOrgForm, targetOrgId: e.target.value })}
-                  options={organizations.map((o) => ({ value: o.id, label: o.name }))}
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-fg mb-1">Tingkat Baru</label>
-                <Select
-                  value={moveOrgForm.level}
-                  onChange={(e) => setMoveOrgForm({ ...moveOrgForm, level: e.target.value as 'admin' | 'anggota' })}
-                  options={[
-                    { value: 'admin', label: 'Admin Organisasi' },
-                    { value: 'anggota', label: 'Anggota Organisasi' },
-                  ]}
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-fg mb-1">Peran Baru di Organisasi</label>
-                <Select
-                  value={moveOrgForm.targetRoleId}
-                  onChange={(e) => setMoveOrgForm({ ...moveOrgForm, targetRoleId: e.target.value })}
-                  options={roles.map((r) => ({ value: r.id, label: r.name }))}
-                />
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-2 pt-3 border-t border-line">
+          footer={
+            <div className="flex items-center justify-end gap-3 w-full">
               <Button type="button" variant="secondary" onClick={() => setMoveOrgMem(null)}>
                 Batal
               </Button>
               <Button type="button" variant="primary" onClick={handleConfirmMoveOrg}>
                 <HeroCheck className="w-4 h-4 mr-1.5" />
-                Pindahkan
+                {moveOrgMem.organization_id ? 'Pindahkan Penugasan' : 'Tugaskan ke Jabatan'}
+              </Button>
+            </div>
+          }
+        >
+          <div className="space-y-4">
+            <Select
+              label={moveOrgMem.organization_id ? 'Posisi Jabatan Tujuan' : 'Pilih Posisi Jabatan Penugasan'}
+              required
+              value={moveOrgForm.targetOrgId}
+              onValueChange={(val) => setMoveOrgForm({ ...moveOrgForm, targetOrgId: val })}
+              options={organizations.map((o) => ({ value: o.id, label: o.name }))}
+              helperText="Posisi jabatan penempatan akun pengguna ini."
+            />
+
+            <Select
+              label="Tingkat Penugasan Baru"
+              required
+              value={moveOrgForm.level}
+              onValueChange={(val) => setMoveOrgForm({ ...moveOrgForm, level: val as 'admin' | 'anggota' })}
+              options={[
+                { value: 'admin', label: 'Admin Jabatan (Hak Penuh Pengelolaan)' },
+                { value: 'anggota', label: 'Anggota / Staf Pelaksana' },
+              ]}
+              helperText="Tingkat wewenang operasional pada jabatan yang dipilih."
+            />
+
+            <Select
+              label="Peran & Hak Akses Baru"
+              required
+              value={moveOrgForm.targetRoleId}
+              onValueChange={(val) => setMoveOrgForm({ ...moveOrgForm, targetRoleId: val })}
+              options={roles.map((r) => ({ value: r.id, label: r.name }))}
+              helperText="Izin dan peran otorisasi dalam jabatan penugasan."
+            />
+          </div>
+        </Modal>
+      )}
+
+      {/* Delete Confirmation Modal - Aligned with UI_CONSISTENCY.md */}
+      {deleteMem && (
+        <Modal
+          isOpen={!!deleteMem}
+          onClose={() => setDeleteMem(null)}
+          title="Hapus Akun Pengguna"
+          description={`Konfirmasi penghapusan akun ${deleteMem.user?.name}.`}
+          size="sm"
+          footer={
+            <div className="flex items-center justify-end gap-3 w-full">
+              <Button type="button" variant="secondary" onClick={() => setDeleteMem(null)}>
+                Batal
+              </Button>
+              <Button type="button" variant="danger" onClick={handleConfirmDeleteSingle}>
+                <HeroTrash className="w-4 h-4 mr-1.5" />
+                Hapus Akun
+              </Button>
+            </div>
+          }
+        >
+          <p className="text-xs text-fg leading-relaxed">
+            Akun pengguna ini beserta seluruh izin penugasannya akan dihapus secara permanen dari sistem.
+          </p>
+        </Modal>
+      )}
+
+      {/* Handover Modal (Stage 5) */}
+      {handoverMem && (
+        <Modal
+          isOpen={!!handoverMem}
+          onClose={() => setHandoverMem(null)}
+          title="Serah Terima Pemegang Akun (Handover)"
+          size="lg"
+        >
+          <div className="space-y-5">
+            {/* Box Identitas Akun Unit Permanen */}
+            <div className="p-3.5 rounded-xl bg-surface-muted border border-line space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-semibold text-fg uppercase tracking-wider">Identitas Akun Unit</span>
+                <span className="text-[10px] font-mono bg-surface px-2 py-0.5 rounded border border-line text-fg-muted">
+                  Permanen Terhadap Unit
+                </span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+                <div>
+                  <span className="text-fg-muted block">Akun Jabatan:</span>
+                  <span className="font-semibold text-fg">{handoverMem.user?.name}</span>
+                </div>
+                <div>
+                  <span className="text-fg-muted block">Jabatan Terdaftar:</span>
+                  <span className="font-semibold text-fg">{handoverMem.organization?.name}</span>
+                </div>
+                <div>
+                  <span className="text-fg-muted block">Email Resmi:</span>
+                  <span className="font-mono text-fg">{handoverMem.user?.email}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Pemegang Saat Ini */}
+            <div className="p-3 rounded-xl bg-amber-500/5 border border-amber-500/20 flex items-center justify-between text-xs">
+              <div>
+                <span className="text-fg-muted block text-[11px]">Pemegang Saat Ini (Current Holder):</span>
+                <span className="font-bold text-fg text-sm">
+                  {handoverMem.user?.holder_name || <span className="italic text-fg-muted">Belum ada pemegang aktif</span>}
+                </span>
+              </div>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                {handoverMem.user?.holder_name ? 'Aktif Menjabat' : 'Perlu Penunjukan'}
+              </span>
+            </div>
+
+            {/* Formulir Pergantian Pemegang */}
+            <form noValidate onSubmit={handleTriggerConfirmHandover} className="space-y-4 pt-2 border-t border-line">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-semibold text-fg">Pilih / Daftarkan Pemegang Baru</label>
+                <div className="flex items-center gap-2 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setHandoverMode('select')}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-medium transition cursor-pointer ${
+                      handoverMode === 'select'
+                        ? 'bg-amber-500 text-white shadow-xs'
+                        : 'bg-surface-muted text-fg-muted hover:text-fg'
+                    }`}
+                  >
+                    Person Terdaftar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setHandoverMode('new')}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-medium transition cursor-pointer ${
+                      handoverMode === 'new'
+                        ? 'bg-amber-500 text-white shadow-xs'
+                        : 'bg-surface-muted text-fg-muted hover:text-fg'
+                    }`}
+                  >
+                    + Person Baru
+                  </button>
+                </div>
+              </div>
+
+              {handoverMode === 'select' ? (
+                <div>
+                  <label className="block text-xs font-medium text-fg mb-1">
+                    Pilih Person dari Master Person Terdaftar
+                  </label>
+                  {availablePersons.length > 0 ? (
+                    <Select
+                      value={selectedPersonId}
+                      onChange={(e) => setSelectedPersonId(e.target.value)}
+                      options={[
+                        { value: '', label: '-- Pilih Person Pemegang Baru --' },
+                        ...availablePersons.map((p) => ({
+                          value: p.id,
+                          label: `${p.name}${p.identifier ? ` (${p.identifier})` : ''}${p.phone ? ` - ${p.phone}` : ''}`,
+                        })),
+                      ]}
+                    />
+                  ) : (
+                    <div className="p-3 text-xs text-fg-muted bg-surface-muted rounded-lg border border-line">
+                      Tidak ada person terdaftar lainnya. Silakan gunakan tombol <strong>+ Person Baru</strong> di atas untuk mendaftarkan manusia baru.
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 rounded-xl bg-surface-muted/50 border border-line">
+                  <div>
+                    <label className="block text-xs font-medium text-fg mb-1">Nama Lengkap Person *</label>
+                    <Input
+                      value={newPersonForm.name}
+                      onChange={(e) => setNewPersonForm({ ...newPersonForm, name: e.target.value })}
+                      placeholder="e.g. Ust. Ahmad Al-Farisi"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-fg mb-1">NIK / NIAT / Identitas Santri</label>
+                    <Input
+                      value={newPersonForm.identifier}
+                      onChange={(e) => setNewPersonForm({ ...newPersonForm, identifier: e.target.value })}
+                      placeholder="e.g. 3501012345670001"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-fg mb-1">Nomor Telepon / WhatsApp</label>
+                    <Input
+                      value={newPersonForm.phone}
+                      onChange={(e) => setNewPersonForm({ ...newPersonForm, phone: e.target.value })}
+                      placeholder="e.g. 081234567890"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-fg mb-1">Email Pribadi Person</label>
+                    <Input
+                      type="email"
+                      value={newPersonForm.email}
+                      onChange={(e) => setNewPersonForm({ ...newPersonForm, email: e.target.value })}
+                      placeholder="e.g. ahmad.farisi@gmail.com"
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <DatePicker
+                    label="Tanggal Mulai Menjabat"
+                    required
+                    value={periodStart}
+                    onChange={(val) => setPeriodStart(val)}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-fg mb-1">Nomor SK / Catatan Serah Terima</label>
+                  <Input
+                    value={handoverNotes}
+                    onChange={(e) => setHandoverNotes(e.target.value)}
+                    placeholder="e.g. SK Pengangkatan No. 12/SK/PP/2026"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-line">
+                <Button type="button" variant="secondary" onClick={() => setHandoverMem(null)}>
+                  Batal
+                </Button>
+                <Button type="submit" variant="primary">
+                  <HeroArrowPath className="w-4 h-4 mr-1.5" />
+                  Lanjutkan Serah Terima
+                </Button>
+              </div>
+            </form>
+
+            {/* Riwayat Pemegang Akun (Account Holder History) */}
+            <div className="space-y-2 pt-2 border-t border-line">
+              <h3 className="text-xs font-bold text-fg uppercase tracking-wider">
+                Riwayat Pemegang Akun (Holder History)
+              </h3>
+              {handoverHistories.length > 0 ? (
+                <>
+                  {/* Mobile View: iOS Grouped Inset Cards (< sm) */}
+                  <div className="sm:hidden space-y-2 max-h-52 overflow-y-auto pr-0.5">
+                    {handoverHistories.map((h) => {
+                      const isCurrentActive = !h.period_end || h.period_end === ''
+                      return (
+                        <div
+                          key={h.id}
+                          className="p-3 rounded-xl bg-surface-muted border border-line space-y-1.5"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-semibold text-fg text-xs">{h.person_name}</span>
+                            <span
+                              className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                isCurrentActive
+                                  ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400'
+                                  : 'bg-surface text-fg-muted border border-line'
+                              }`}
+                            >
+                              {isCurrentActive ? 'Aktif' : 'Purna Tugas'}
+                            </span>
+                          </div>
+                          <div className="text-[11px] font-mono text-fg-muted flex items-center justify-between">
+                            <span>Masa Jabatan:</span>
+                            <span className="font-medium text-fg">{h.period_start} → {h.period_end || 'Sekarang'}</span>
+                          </div>
+                          {h.handover_notes && (
+                            <div className="text-[11px] text-fg-muted border-t border-line/60 pt-1 mt-1">
+                              <span className="font-medium text-fg">SK/Catatan:</span> {h.handover_notes}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+
+                  {/* Desktop View: Tabular View (>= sm) */}
+                  <div className="hidden sm:block max-h-48 overflow-y-auto rounded-lg border border-line">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-surface-muted border-b border-line text-fg-muted font-medium">
+                        <tr>
+                          <th className="py-2 px-3">Nama Pemegang</th>
+                          <th className="py-2 px-3">Periode Menjabat</th>
+                          <th className="py-2 px-3">Catatan / SK</th>
+                          <th className="py-2 px-3">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-line">
+                        {handoverHistories.map((h) => {
+                          const isCurrentActive = !h.period_end || h.period_end === ''
+                          return (
+                            <tr key={h.id} className="hover:bg-hover-bg">
+                              <td className="py-2 px-3 font-semibold text-fg">{h.person_name}</td>
+                              <td className="py-2 px-3 font-mono text-[11px] text-fg-muted">
+                                {h.period_start} → {h.period_end || 'Sekarang'}
+                              </td>
+                              <td className="py-2 px-3 text-fg-muted text-[11px]">{h.handover_notes || '-'}</td>
+                              <td className="py-2 px-3">
+                                <span
+                                  className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                                    isCurrentActive
+                                      ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400'
+                                      : 'bg-surface-muted text-fg-muted'
+                                  }`}
+                                >
+                                  {isCurrentActive ? 'Aktif' : 'Purna Tugas'}
+                                </span>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              ) : (
+                <p className="text-xs text-fg-muted italic">Belum ada riwayat pergantian pemegang untuk akun ini.</p>
+              )}
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Confirmation Modal for Handover (Stage 5) */}
+      {isConfirmHandoverOpen && handoverMem && (
+        <Modal
+          isOpen={isConfirmHandoverOpen}
+          onClose={() => setIsConfirmHandoverOpen(false)}
+          title="Konfirmasi Serah Terima Pemegang Akun"
+          size="sm"
+        >
+          <div className="space-y-4">
+            <div className="p-3 rounded-lg bg-amber-500/10 text-amber-800 dark:text-amber-300 text-xs space-y-1">
+              <p className="font-semibold">Perhatian Keamanan & Integritas Data:</p>
+              <p className="leading-relaxed">
+                Anda akan mengalihkan tanggung jawab pemegang akun <strong>{handoverMem.user?.name}</strong>.
+                Seluruh data Program Kerja, Agenda, Keuangan, dan Riwayat Approval yang dibuat sebelumnya
+                <strong> TETAP UTUH</strong> dan tidak akan berpindah kepemilikan.
+              </p>
+            </div>
+
+            <div className="text-xs space-y-1 text-fg">
+              <p>
+                <strong>Akun Unit:</strong> {handoverMem.user?.name} ({handoverMem.organization?.name})
+              </p>
+              <p>
+                <strong>Pemegang Baru:</strong>{' '}
+                {handoverMode === 'select'
+                  ? availablePersons.find((p) => p.id === selectedPersonId)?.name
+                  : newPersonForm.name}
+              </p>
+              <p>
+                <strong>Tanggal Efektif:</strong> {periodStart}
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-line">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setIsConfirmHandoverOpen(false)}
+                disabled={isSubmittingHandover}
+              >
+                Batal
+              </Button>
+              <Button
+                type="button"
+                variant="primary"
+                onClick={handleExecuteHandover}
+                disabled={isSubmittingHandover}
+              >
+                {isSubmittingHandover ? 'Memproses...' : 'Ya, Konfirmasi Serah Terima'}
               </Button>
             </div>
           </div>

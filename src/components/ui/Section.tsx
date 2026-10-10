@@ -34,10 +34,9 @@ export const Section: React.FC<SectionProps> = ({
   }
 
   return (
-    <div
+    <section
       className={cn(
-        'w-full rounded-xl shadow-sm transition-all bg-surface ring-1 ring-line',
-        collapsed ? 'overflow-hidden' : 'overflow-visible',
+        'w-full rounded-xl bg-surface ring-1 ring-line shadow-xs transition-all overflow-hidden',
         className
       )}
     >
@@ -48,14 +47,14 @@ export const Section: React.FC<SectionProps> = ({
           onClick={() => setCollapsed(!collapsed)}
           aria-expanded={!collapsed}
           className={cn(
-            'w-full px-5 py-3.5 sm:px-6 sm:py-3.5 flex items-center justify-between text-left',
-            !collapsed && 'border-b border-line-divider',
-            'cursor-pointer hover:bg-hover-bg select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-500 rounded-t-xl'
+            'w-full px-5 py-4 sm:px-6 sm:py-4.5 flex items-center justify-between text-left gap-3',
+            !collapsed && 'border-b border-line-divider/80',
+            'cursor-pointer hover:bg-hover-bg/60 select-none transition-colors duration-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-500'
           )}
         >
           <div className="flex items-center gap-3 min-w-0 flex-1">
             {icon && (
-              <div className="w-8 h-8 rounded-lg bg-surface-muted ring-1 ring-line flex items-center justify-center text-amber-500 shrink-0">
+              <div className="w-8 h-8 rounded-lg bg-surface-muted/80 ring-1 ring-line/60 flex items-center justify-center text-primary shrink-0">
                 {icon}
               </div>
             )}
@@ -64,27 +63,29 @@ export const Section: React.FC<SectionProps> = ({
                 {title}
               </h3>
               {description && (
-                <p className="hidden sm:block text-xs text-fg-muted mt-0.5 leading-relaxed">{description}</p>
+                <p className="hidden sm:block text-xs text-fg-muted mt-0.5 leading-relaxed font-normal">{description}</p>
               )}
             </div>
           </div>
-          <HeroChevronDown
-            className={cn(
-              'w-4 h-4 text-fg-muted transition-transform duration-200 shrink-0',
-              collapsed && '-rotate-90'
-            )}
-          />
+          <div className="shrink-0 p-1 rounded-md text-fg-muted hover:text-fg transition-colors">
+            <HeroChevronDown
+              className={cn(
+                'w-4 h-4 transition-transform duration-200 ease-out',
+                collapsed && '-rotate-90'
+              )}
+            />
+          </div>
         </button>
       ) : (
         <div
           className={cn(
-            'px-5 py-3.5 sm:px-6 sm:py-3.5 flex items-center justify-between',
-            !collapsed && 'border-b border-line-divider',
+            'px-5 py-4 sm:px-6 sm:py-4.5 flex items-center justify-between',
+            !collapsed && 'border-b border-line-divider/80',
           )}
         >
           <div className="flex items-center gap-3 min-w-0 flex-1">
             {icon && (
-              <div className="w-8 h-8 rounded-lg bg-surface-muted ring-1 ring-line flex items-center justify-center text-amber-500 shrink-0">
+              <div className="w-8 h-8 rounded-lg bg-surface-muted/80 ring-1 ring-line/60 flex items-center justify-center text-primary shrink-0">
                 {icon}
               </div>
             )}
@@ -93,7 +94,7 @@ export const Section: React.FC<SectionProps> = ({
                 {title}
               </h3>
               {description && (
-                <p className="hidden sm:block text-xs text-fg-muted mt-0.5 leading-relaxed">{description}</p>
+                <p className="hidden sm:block text-xs text-fg-muted mt-0.5 leading-relaxed font-normal">{description}</p>
               )}
             </div>
           </div>
@@ -105,6 +106,6 @@ export const Section: React.FC<SectionProps> = ({
           {children}
         </div>
       )}
-    </div>
+    </section>
   )
 }

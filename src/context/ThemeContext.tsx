@@ -63,16 +63,11 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     } else {
       root.classList.remove('dark')
     }
-    if (accentColor === 'green') {
-      root.classList.add('theme-green')
-    } else {
-      root.classList.remove('theme-green')
-    }
+    root.classList.remove('theme-green')
     localStorage.setItem('filament_theme_mode', mode)
     localStorage.setItem('filament_theme', theme)
-    localStorage.setItem('filament_accent_color', accentColor)
     localStorage.setItem('theme', theme)
-  }, [theme, mode, accentColor])
+  }, [theme, mode])
 
   React.useEffect(() => {
     const handleStorage = (e: StorageEvent) => {

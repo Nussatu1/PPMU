@@ -63,6 +63,47 @@ export interface RoleEntity {
 export type Role = 'superadmin' | 'admin' | 'editor' | 'member' | string
 export type UserStatus = 'active' | 'inactive' | 'suspended'
 
+// ------------------------------------------------------------------------------
+// PERSON MODEL (Manusia riil pemegang akun unit / pengurus)
+// ------------------------------------------------------------------------------
+
+export interface Person {
+  id: string
+  name: string
+  identifier?: string // NIP / NIAT / Identitas Santri
+  phone?: string
+  email?: string
+  status: 'active' | 'inactive'
+  created_at: string
+  updated_at?: string
+}
+
+export interface AccountHolderHistory {
+  id: string
+  account_id: string // Ref ke Akun Unit (User.id)
+  organization_id: string // Ref ke Organization.id
+  person_id: string // Ref ke Person.id
+  person_name: string // Snapshot nama saat bertugas
+  period_start: string // Tanggal serah terima jabatan
+  period_end?: string // Tanggal purna tugas / pergantian
+  handover_notes?: string // Catatan serah terima / SK
+  created_by?: string // User atasan yang memproses pergantian
+  created_at: string
+}
+
+export interface HandoverAccountHolderParams {
+  accountId: string
+  newPersonId?: string
+  newPersonData?: {
+    name: string
+    identifier?: string
+    phone?: string
+    email?: string
+  }
+  periodStart?: string
+  notes?: string
+}
+
 export interface User {
   id: string
   name: string
@@ -77,18 +118,28 @@ export interface User {
   must_change_password?: boolean
   created_at: string
   updated_at?: string
+  // Account Unit & Person Holder fields (Model A)
+  organization_id?: string
+  holder_person_id?: string
+  holder_name?: string
+  holder_phone?: string
   // Virtual joined properties
   active_membership?: OrganizationMembership
   memberships?: OrganizationMembership[]
+  holder?: Person
 }
 
 export type OrganizationStatus = 'active' | 'inactive' | 'archived' | 'trial' | 'suspended'
 
 export type OrganizationUnitType =
-  | 'pimpinan'
-  | 'lembaga'
-  | 'kelompok'
-  | 'unit'
+  | 'kepala_pengurus' // Level 0: Pimpinan Tertinggi Pesantren
+  | 'waka' // Level 1: Wakil Kepala / Koordinator Bidang
+  | 'seksi' // Level 2: Seksi Struktural / Pengawal Bidang
+  | 'organisasi' // Level 3: Organisasi Binaan / Pelaksana Teknis Non-Otonom
+  | 'pimpinan' // Legacy alias
+  | 'lembaga' // Legacy alias
+  | 'kelompok' // Legacy alias
+  | 'unit' // Legacy alias
   | string
 
 export type OrganizationScopeMode = 'own' | 'descendants'
@@ -238,10 +289,27 @@ export type ProgramStatus =
   | 'completed'
   | 'closed'
 
+export type ProgramDurationType = 'terbatas' | 'jangka_panjang' | 'rutin'
+
+export interface ProgramKPI {
+  id: string
+  indicator: string
+  target_value?: number | string
+  target_unit?: string
+}
+
+export interface ProgramBudgetItem {
+  id: string
+  name: string
+  nominal: number
+  description?: string
+}
+
 export interface Program {
   id: string
   organization_id: string
   period_id?: string
+  duration_type?: ProgramDurationType
   section_id: string
   name?: string
   title?: string // alias for name
@@ -254,6 +322,10 @@ export interface Program {
   indicator?: string // Indikator Kinerja Utama
   target_value?: number
   target_unit?: string // e.g. "Kegiatan", "Peserta", "Dokumen", "%"
+  // Multi KPI items collection
+  kpi_items?: ProgramKPI[]
+  // Budget items breakdown collection
+  budget_breakdown?: ProgramBudgetItem[]
   pic_personnel_id?: string // PIC linked to Structure / Personnel
   pic_structure_id?: string // Alias for pic_personnel_id
   pic_name?: string
@@ -266,6 +338,8 @@ export interface Program {
   budget_realized?: number
   created_by?: string
   approved_by?: string
+  approved_by_organization_id?: string | null
+  approved_at?: string
   status: ProgramStatus
   revision_notes?: string
   // Stage 6: Downward Control — unit organisasi penerima / delegasi

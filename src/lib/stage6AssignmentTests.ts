@@ -269,7 +269,7 @@ export function runAssertTests(): { name: string; pass: boolean; error?: string 
   try {
     assertCanAssignToOrganization('a1', 'lembaga-a', orgs)
     results.push({ name: 'Assert — A1 → Lembaga A (must throw)', pass: false, error: 'Did not throw' })
-  } catch (_) {
+  } catch {
     results.push({ name: 'Assert — A1 → Lembaga A (must throw)', pass: true })
   }
 
@@ -277,7 +277,7 @@ export function runAssertTests(): { name: string; pass: boolean; error?: string 
   try {
     assertCanAssignToOrganization('a1', 'a2', orgs)
     results.push({ name: 'Assert — A1 → A2 sibling (must throw)', pass: false, error: 'Did not throw' })
-  } catch (_) {
+  } catch {
     results.push({ name: 'Assert — A1 → A2 sibling (must throw)', pass: true })
   }
 
@@ -285,7 +285,7 @@ export function runAssertTests(): { name: string; pass: boolean; error?: string 
   try {
     assertCanAssignToOrganization('lembaga-a', 'b1', orgs)
     results.push({ name: 'Assert — Lembaga A → B1 cross-branch (must throw)', pass: false, error: 'Did not throw' })
-  } catch (_) {
+  } catch {
     results.push({ name: 'Assert — Lembaga A → B1 cross-branch (must throw)', pass: true })
   }
 

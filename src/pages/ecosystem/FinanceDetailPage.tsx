@@ -171,7 +171,7 @@ export const FinanceDetailPage: React.FC = () => {
         <div className="flex items-center justify-between gap-3 pt-1">
           <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-fg flex items-center gap-2.5">
             <HeroCurrencyDollar className="w-6 h-6 text-amber-600 dark:text-amber-400 shrink-0" />
-            Detail Catatan Kas
+            Detail Kas
           </h1>
 
           <Button
@@ -189,7 +189,7 @@ export const FinanceDetailPage: React.FC = () => {
         <div className="p-4 sm:p-5 rounded-2xl border border-line bg-surface shadow-2xs space-y-3">
           <div className="flex items-center justify-between gap-2">
             <Badge variant={isIncome ? 'emerald' : 'amber'} dot>
-              {isIncome ? 'Pemasukan Kas' : 'Pengeluaran Kas'}
+              {isIncome ? 'Pemasukan' : 'Pengeluaran'}
             </Badge>
 
             <span className="text-xs text-fg-muted font-mono truncate max-w-[120px] sm:max-w-none">
@@ -220,10 +220,10 @@ export const FinanceDetailPage: React.FC = () => {
         <div className="p-4 sm:p-5 rounded-2xl border border-line bg-surface shadow-2xs space-y-2">
           <h2 className="text-xs font-semibold text-fg-muted uppercase tracking-wider flex items-center gap-1.5">
             <HeroDocumentText className="w-4 h-4 text-primary-500" />
-            Uraian / Deskripsi Mutasi
+            Uraian
           </h2>
           <p className="text-sm text-fg font-normal leading-relaxed whitespace-pre-wrap break-words pt-1">
-            {transaction.description || 'Tidak ada uraian tertulis untuk catatan mutasi ini.'}
+            {transaction.description || 'Tidak ada uraian tertulis.'}
           </p>
         </div>
 
@@ -236,17 +236,17 @@ export const FinanceDetailPage: React.FC = () => {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs sm:text-sm">
             <div className="space-y-0.5">
-              <span className="text-fg-muted block text-[11px] sm:text-xs font-normal">Pos Anggaran / Program</span>
+              <span className="text-fg-muted block text-[11px] sm:text-xs font-normal">Pos Anggaran</span>
               <span className="font-medium text-fg block">{programTitle}</span>
             </div>
 
             <div className="space-y-0.5">
-              <span className="text-fg-muted block text-[11px] sm:text-xs font-normal">Kategori Mutasi</span>
+              <span className="text-fg-muted block text-[11px] sm:text-xs font-normal">Kategori</span>
               <span className="font-medium text-fg block">{categoryTitle}</span>
             </div>
 
             <div className="space-y-0.5">
-              <span className="text-fg-muted block text-[11px] sm:text-xs font-normal">Dicatat Oleh</span>
+              <span className="text-fg-muted block text-[11px] sm:text-xs font-normal">Pencatat</span>
               <span className="font-medium text-fg block flex items-center gap-1">
                 <HeroUser className="w-3.5 h-3.5 text-fg-muted shrink-0" />
                 <span>{recorderName}</span>

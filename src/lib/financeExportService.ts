@@ -37,10 +37,21 @@ export function getLastDayOfMonth(year: number, month: number): number {
   return new Date(year, month, 0).getDate()
 }
 
+import { FORMAT_EXCEL_KEUANGAN_BASE64 } from './excelTemplateBase64'
+
 /**
- * Membaca buffer dari template format excel keuangan di direktori public
+ * Membaca buffer dari template format excel keuangan (fallback ke embedded base64 untuk single file html)
  */
 async function fetchTemplateBuffer(): Promise<ArrayBuffer> {
+  if (FORMAT_EXCEL_KEUANGAN_BASE64) {
+    const binaryString = atob(FORMAT_EXCEL_KEUANGAN_BASE64)
+    const len = binaryString.length
+    const bytes = new Uint8Array(len)
+    for (let i = 0; i < len; i++) {
+      bytes[i] = binaryString.charCodeAt(i)
+    }
+    return bytes.buffer
+  }
   const response = await fetch('/format-excel-keuangan.xlsx')
   if (!response.ok) {
     throw new Error('Gagal memuat template Excel keuangan')

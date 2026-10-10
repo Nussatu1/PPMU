@@ -14,6 +14,7 @@ import {
   HeroPlus,
   HeroEye,
   HeroTrash,
+  HeroPencilSquare,
 } from '@/components/icons/HeroIcons'
 import {
   OrganizationScopeBadge,
@@ -27,12 +28,15 @@ export const PerformanceListPage: React.FC = () => {
   const { confirm } = useConfirm()
 
   const [performances, setPerformances] = useState<Performance[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  const [isLoading, setIsLoading] = useState(false)
 
   const orgId = currentOrganization?.id || ''
 
   const loadData = useCallback(async () => {
-    if (!orgId) return
+    if (!orgId) {
+      setIsLoading(false)
+      return
+    }
     setIsLoading(true)
     try {
       const perfs = await dataService.getPerformances(
@@ -71,10 +75,30 @@ export const PerformanceListPage: React.FC = () => {
     }
   }
 
+  const handleBulkDelete = async (ids: string[]) => {
+    if (ids.length === 0) return
+    const ok = await confirm({
+      title: 'Hapus Indikator KPI Terpilih',
+      message: `Yakin ingin menghapus ${ids.length} indikator KPI terpilih? Tindakan ini tidak dapat dibatalkan.`,
+      tone: 'danger',
+      confirmLabel: `Hapus ${ids.length} KPI`,
+    })
+    if (!ok) return
+    try {
+      const result = await dataService.bulkDeletePerformances(ids, user)
+      if (result.deleted > 0) success('KPI Dihapus', `${result.deleted} indikator KPI berhasil dihapus.`)
+      if (result.denied.length > 0) error('Sebagian Gagal', `${result.denied.length} KPI tidak dapat dihapus (tidak ada izin).`)
+      loadData()
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Gagal menghapus KPI'
+      error('Gagal', msg)
+    }
+  }
+
   const columns: ColumnDef<Performance>[] = [
     {
       key: 'kpi_name',
-      label: 'Indikator Kinerja & Program',
+      label: 'Indikator',
       sortable: true,
       render: (p) => (
         <div className="flex items-start gap-3">
@@ -95,7 +119,7 @@ export const PerformanceListPage: React.FC = () => {
     },
     {
       key: 'target',
-      label: 'Target vs Realisasi',
+      label: 'Target',
       sortable: true,
       render: (p) => (
         <div>
@@ -108,7 +132,7 @@ export const PerformanceListPage: React.FC = () => {
     },
     {
       key: 'percentage',
-      label: 'Progres Capaian',
+      label: 'Progres',
       sortable: true,
       render: (p) => {
         const pct = p.percentage ?? (p.target && p.target > 0 ? Math.round(((p.realized || 0) / p.target) * 100) : 0)
@@ -136,7 +160,7 @@ export const PerformanceListPage: React.FC = () => {
     },
     {
       key: 'evidence_urls',
-      label: 'Bukti Fisik',
+      label: 'Bukti',
       render: (p) => (
         <div>
           {p.evidence_urls && p.evidence_urls.length > 0 ? (
@@ -147,12 +171,26 @@ export const PerformanceListPage: React.FC = () => {
               className="inline-flex items-center gap-1 text-xs text-amber-600 hover:text-amber-700 dark:text-amber-400 font-semibold"
             >
               <HeroEye className="w-3.5 h-3.5" />
-              Lihat Bukti ({p.evidence_urls.length})
+              Bukti ({p.evidence_urls.length})
             </a>
           ) : (
-            <span className="text-xs text-fg-muted italic">Belum diunggah</span>
+            <span className="text-xs text-fg-muted italic">-</span>
           )}
         </div>
+      ),
+    },
+    {
+      key: 'actions_edit',
+      label: '',
+      render: (p) => (
+        <button
+          type="button"
+          onClick={() => navigate(`/performance/${p.id}/edit`)}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-primary-600 dark:text-primary-400 bg-primary-500/10 hover:bg-primary-500/20 rounded-lg transition-colors cursor-pointer"
+        >
+          <HeroPencilSquare className="w-3.5 h-3.5" />
+          Edit
+        </button>
       ),
     },
   ]
@@ -164,13 +202,13 @@ export const PerformanceListPage: React.FC = () => {
         <div>
           <Breadcrumb
             items={[
-              { label: 'Capaian Kinerja' },
+              { label: 'Kinerja' },
             ]}
           />
           <div className="flex items-center gap-2.5 flex-wrap mt-1">
             <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-fg flex items-center gap-2.5">
               <HeroChartBar className="w-7 h-7 text-amber-500" />
-              Capaian Kinerja (KPI) & Bukti Fisik
+              Kinerja
             </h1>
             <OrganizationScopeBadge />
           </div>
@@ -180,26 +218,26 @@ export const PerformanceListPage: React.FC = () => {
           <OrganizationScopeSwitcher size="sm" />
           <Button variant="primary" onClick={() => navigate('/performance/create')} className="shrink-0 self-start sm:self-auto">
             <HeroPlus className="w-4 h-4 mr-2" />
-            Tambah Indikator KPI
+            Tambah
           </Button>
         </div>
       </div>
 
       {/* Overview Stat Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="p-4 rounded-xl border border-line bg-surface shadow-2xs">
-          <p className="text-xs font-semibold text-fg-muted uppercase">Total Indikator</p>
-          <p className="text-2xl font-bold text-fg mt-1">{performances.length}</p>
+        <div className="p-5 rounded-xl border border-line bg-surface">
+          <p className="text-xs font-medium text-fg-muted">Total Indikator</p>
+          <p className="text-2xl font-bold tracking-tight text-fg mt-1.5">{performances.length}</p>
         </div>
-        <div className="p-4 rounded-xl border border-line bg-surface shadow-2xs">
-          <p className="text-xs font-semibold text-fg-muted uppercase">Capaian &gt;= 80%</p>
-          <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400 mt-1">
+        <div className="p-5 rounded-xl border border-line bg-surface">
+          <p className="text-xs font-medium text-fg-muted">Target Tercapai (≥80%)</p>
+          <p className="text-2xl font-bold tracking-tight text-emerald-600 dark:text-emerald-400 mt-1.5">
             {performances.filter((p) => (p.percentage ?? 0) >= 80).length}
           </p>
         </div>
-        <div className="p-4 rounded-xl border border-line bg-surface shadow-2xs">
-          <p className="text-xs font-semibold text-fg-muted uppercase">Rata-rata Capaian</p>
-          <p className="text-2xl font-bold text-amber-600 dark:text-amber-400 mt-1">
+        <div className="p-5 rounded-xl border border-line bg-surface">
+          <p className="text-xs font-medium text-fg-muted">Rata-rata Capaian</p>
+          <p className="text-2xl font-bold tracking-tight text-amber-600 dark:text-amber-400 mt-1.5">
             {performances.length > 0
               ? Math.round(performances.reduce((s, p) => s + (p.percentage ?? 0), 0) / performances.length)
               : 0}%
@@ -215,6 +253,7 @@ export const PerformanceListPage: React.FC = () => {
         searchPlaceholder="Cari indikator kinerja..."
         searchKey="kpi_name"
         onDelete={handleDelete}
+        onBulkDelete={handleBulkDelete}
         renderCard={(p) => {
           const pct = p.percentage ?? (p.target && p.target > 0 ? Math.round(((p.realized || 0) / p.target) * 100) : 0)
           let colorClass = 'bg-amber-500'
@@ -234,14 +273,24 @@ export const PerformanceListPage: React.FC = () => {
                     <p className="text-xs text-fg-muted mt-1">{p.notes}</p>
                   )}
                 </div>
-                <button
-                  type="button"
-                  onClick={() => handleDelete(p)}
-                  className="w-11 h-11 flex items-center justify-center text-fg-muted hover:text-red-500 rounded-lg hover:bg-hover-bg shrink-0 -mr-2 -mt-2 cursor-pointer transition-colors"
-                  title="Hapus Indikator"
-                >
-                  <HeroTrash className="w-4 h-4" />
-                </button>
+                <div className="flex items-center gap-1 shrink-0 -mr-2 -mt-2">
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/performance/${p.id}/edit`)}
+                    className="w-11 h-11 flex items-center justify-center text-fg-muted hover:text-primary-500 rounded-lg hover:bg-hover-bg cursor-pointer transition-colors"
+                    title="Edit KPI"
+                  >
+                    <HeroPencilSquare className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDelete(p)}
+                    className="w-11 h-11 flex items-center justify-center text-fg-muted hover:text-red-500 rounded-lg hover:bg-hover-bg shrink-0 cursor-pointer transition-colors"
+                    title="Hapus Indikator"
+                  >
+                    <HeroTrash className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
 
               {/* Realisasi vs Target (Side by side comparison columns) */}

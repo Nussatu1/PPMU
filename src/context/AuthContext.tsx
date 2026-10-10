@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import type {
   User,
   Organization,
+  OrganizationMembership,
   OrganizationScopeMode,
   PermissionAction,
   PermissionResource,
@@ -20,6 +21,7 @@ interface AuthContextType {
   user: User | null
   currentOrganization: Organization | null
   userOrganizations: Organization[]
+  userMemberships: OrganizationMembership[]
   organizationAncestors: Organization[]
   organizationChildren: Organization[]
   organizationDescendants: Organization[]
@@ -43,47 +45,60 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
-const DEFAULT_SUPERADMIN: User = {
-  id: '00000000-0000-0000-0000-000000000001',
-  name: 'Pengurus 1 (Pimpinan Harian)',
-  email: 'pengurus1@bakid.ponpes.id',
-  avatar_url: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150',
-  role: 'superadmin',
-  is_superadmin: true,
-  status: 'active',
-  created_at: new Date().toISOString(),
-}
-
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(() => {
     try {
-      const stored = localStorage.getItem('filament_bakid_auth_user')
+      // 1. Prioritize isolated sessionStorage for the active browser tab/window
+      let stored: string | null = null
+      if (typeof sessionStorage !== 'undefined') {
+        stored = sessionStorage.getItem('filament_bakid_auth_user')
+      }
+
+      // 2. Non-destructive migration: if sessionStorage is empty, check legacy localStorage once
+      if (!stored && typeof localStorage !== 'undefined') {
+        const legacyStored = localStorage.getItem('filament_bakid_auth_user')
+        if (legacyStored) {
+          stored = legacyStored
+          try {
+            sessionStorage.setItem('filament_bakid_auth_user', legacyStored)
+          } catch {}
+          localStorage.removeItem('filament_bakid_auth_user')
+        }
+      }
+
+      // Clean up legacy global logout marker from localStorage if present
+      if (typeof localStorage !== 'undefined') {
+        localStorage.removeItem('filament_bakid_logged_out')
+      }
+
       if (stored) {
         const parsed: User = JSON.parse(stored)
-        const matched = initialUsers.find((iu) => iu.id === parsed.id || iu.email?.toLowerCase() === parsed.email?.toLowerCase())
-        const resolved: User = {
-          ...parsed,
-          avatar_url: parsed.avatar_url || matched?.avatar_url || DEFAULT_SUPERADMIN.avatar_url,
-          name: parsed.name || matched?.name || DEFAULT_SUPERADMIN.name,
+        if (parsed && parsed.id) {
+          const matched = initialUsers.find(
+            (iu) => iu.id === parsed.id || iu.email?.toLowerCase() === parsed.email?.toLowerCase()
+          )
+          const resolved: User = {
+            ...parsed,
+            avatar_url: parsed.avatar_url || matched?.avatar_url || '',
+            name: parsed.name || matched?.name || parsed.email || 'Pengguna',
+          }
+          dataService.setActiveAccount(resolved)
+          return resolved
         }
-        dataService.setActiveAccount(resolved)
-        return resolved
       }
-      const wasLoggedOut = localStorage.getItem('filament_bakid_logged_out')
-      if (wasLoggedOut) {
-        dataService.setActiveAccount(null)
-        return null
-      }
-      dataService.setActiveAccount(DEFAULT_SUPERADMIN)
-      return DEFAULT_SUPERADMIN
+
+      // NO auto-login, NO superadmin fallback. Missing/invalid session renders login page.
+      dataService.setActiveAccount(null)
+      return null
     } catch {
-      dataService.setActiveAccount(DEFAULT_SUPERADMIN)
-      return DEFAULT_SUPERADMIN
+      dataService.setActiveAccount(null)
+      return null
     }
   })
 
   const [currentOrganization, setCurrentOrganization] = useState<Organization | null>(null)
   const [userOrganizations, setUserOrganizations] = useState<Organization[]>([])
+  const [userMemberships, setUserMemberships] = useState<OrganizationMembership[]>([])
   const [currentScopeMode, setCurrentScopeMode] = useState<OrganizationScopeMode>('own')
   const [isLoading, setIsLoading] = useState(false)
 
@@ -132,34 +147,50 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const loadUserOrganizations = useCallback(async (activeUser: User | null) => {
     if (!activeUser) {
       setUserOrganizations([])
+      setUserMemberships([])
       setCurrentOrganization(null)
       return
     }
 
     try {
+      // Ensure shared structural store is up-to-date before reading
+      dataService.reloadSharedStructural()
       const allOrgs = await dataService.getOrganizations(activeUser)
       setUserOrganizations(allOrgs)
 
       // Get user memberships to enrich activeUser with active_membership
       const memberships = await dataService.getMemberships(undefined, activeUser)
       const userMems = memberships.filter((m) => m.user_id === activeUser.id && m.status === 'active')
+      setUserMemberships(userMems)
 
-      const savedOrgId = localStorage.getItem('filament_bakid_active_org_id')
+      const savedOrgId = typeof sessionStorage !== 'undefined'
+        ? sessionStorage.getItem('filament_bakid_active_org_id')
+        : null
       let activeOrg = allOrgs.find((o) => o.id === savedOrgId)
 
       if (!activeOrg && allOrgs.length > 0) {
-        activeOrg = allOrgs[0]
+        // Prioritize organization where user has an active membership
+        const memberOrg = allOrgs.find((o) => userMems.some((m) => m.organization_id === o.id))
+        activeOrg = memberOrg || allOrgs[0]
       }
 
       setCurrentOrganization(activeOrg || null)
       if (activeOrg) {
-        localStorage.setItem('filament_bakid_active_org_id', activeOrg.id)
+        try {
+          sessionStorage.setItem('filament_bakid_active_org_id', activeOrg.id)
+        } catch {}
+      } else {
+        try {
+          sessionStorage.removeItem('filament_bakid_active_org_id')
+        } catch {}
       }
 
       // Attach active membership to user object for the selected organization
       const activeMem = userMems.find((m) => m.organization_id === activeOrg?.id) || userMems[0]
       if (activeMem) {
         setUser((prev) => (prev ? { ...prev, active_membership: activeMem } : null))
+      } else {
+        setUser((prev) => (prev ? { ...prev, active_membership: undefined } : null))
       }
     } catch {
       // Handled silently
@@ -168,11 +199,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     if (user) {
-      localStorage.removeItem('filament_bakid_logged_out')
-      localStorage.setItem('filament_bakid_auth_user', JSON.stringify(user))
+      try {
+        sessionStorage.removeItem('filament_bakid_logged_out')
+        sessionStorage.setItem('filament_bakid_auth_user', JSON.stringify(user))
+      } catch {}
       dataService.setActiveAccount(user)
     } else {
-      localStorage.removeItem('filament_bakid_auth_user')
+      try {
+        sessionStorage.removeItem('filament_bakid_auth_user')
+      } catch {}
       dataService.setActiveAccount(null)
     }
     loadUserOrganizations(user)
@@ -187,6 +222,50 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       document.title = 'My Tafrih'
     }
   }, [currentOrganization?.name, currentOrganization?.short_name])
+
+  // Realtime cross-tab & storage synchronization for structural changes (Organization, etc.)
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    const handleStructuralUpdate = (collection?: string) => {
+      if (!collection || collection === 'organizations' || collection === 'organization_memberships') {
+        loadUserOrganizations(user)
+      }
+    }
+
+    let channel: BroadcastChannel | null = null
+    try {
+      if (typeof BroadcastChannel !== 'undefined') {
+        channel = new BroadcastChannel('filament_structural_sync')
+        channel.onmessage = (event) => {
+          if (event.data?.type === 'structural_change') {
+            handleStructuralUpdate(event.data?.collection)
+          }
+        }
+      }
+    } catch {}
+
+    const handleStorageEvent = (event: StorageEvent) => {
+      if (event.key && (event.key.includes('organizations') || event.key.includes('memberships'))) {
+        handleStructuralUpdate()
+      }
+    }
+
+    const handleCustomWindowSync = (event: CustomEvent) => {
+      handleStructuralUpdate(event.detail?.collection)
+    }
+
+    window.addEventListener('storage', handleStorageEvent)
+    window.addEventListener('filament_structural_change' as any, handleCustomWindowSync)
+
+    return () => {
+      if (channel) {
+        channel.close()
+      }
+      window.removeEventListener('storage', handleStorageEvent)
+      window.removeEventListener('filament_structural_change' as any, handleCustomWindowSync)
+    }
+  }, [user, loadUserOrganizations])
 
   // Keep active user synchronized with registered database & initialUsers (especially avatar_url)
   useEffect(() => {
@@ -216,7 +295,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const org = userOrganizations.find((o) => o.id === organizationId)
     if (org) {
       setCurrentOrganization(org)
-      localStorage.setItem('filament_bakid_active_org_id', org.id)
+      try {
+        sessionStorage.setItem('filament_bakid_active_org_id', org.id)
+      } catch {}
       // Update active membership on user
       dataService.getMemberships(org.id, user).then((mems) => {
         const activeMem = mems.find((m) => m.user_id === user?.id)
@@ -236,7 +317,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const targetUser = await dataService.getUserById(userId)
       if (targetUser) {
-        localStorage.removeItem('filament_bakid_logged_out')
+        try {
+          sessionStorage.removeItem('filament_bakid_logged_out')
+          sessionStorage.removeItem('filament_bakid_active_org_id')
+          sessionStorage.setItem('filament_bakid_auth_user', JSON.stringify(targetUser))
+        } catch {}
         dataService.setActiveAccount(targetUser)
         setUser(targetUser)
       }
@@ -282,7 +367,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             status: 'active',
             created_at: new Date().toISOString(),
           }
-          localStorage.removeItem('filament_bakid_logged_out')
+          try {
+            sessionStorage.removeItem('filament_bakid_logged_out')
+            sessionStorage.setItem('filament_bakid_auth_user', JSON.stringify(loggedUser))
+          } catch {}
           dataService.setActiveAccount(loggedUser)
           setUser(loggedUser)
           setIsLoading(false)
@@ -312,7 +400,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             error: 'Akun Anda telah dinonaktifkan. Silakan hubungi Superadmin.',
           }
         }
-        localStorage.removeItem('filament_bakid_logged_out')
+        try {
+          sessionStorage.removeItem('filament_bakid_logged_out')
+          sessionStorage.setItem('filament_bakid_auth_user', JSON.stringify(matched))
+        } catch {}
         dataService.setActiveAccount(matched)
         setUser(matched)
         setIsLoading(false)
@@ -335,9 +426,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (isSupabaseConfigured && supabase) {
       await supabase.auth.signOut()
     }
-    localStorage.setItem('filament_bakid_logged_out', 'true')
-    localStorage.removeItem('filament_bakid_auth_user')
-    localStorage.removeItem('filament_bakid_active_org_id')
+    try {
+      sessionStorage.setItem('filament_bakid_logged_out', 'true')
+      sessionStorage.removeItem('filament_bakid_auth_user')
+      sessionStorage.removeItem('filament_bakid_active_org_id')
+    } catch {}
     dataService.setActiveAccount(null)
     setUser(null)
     setCurrentOrganization(null)
@@ -349,6 +442,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         user,
         currentOrganization,
         userOrganizations,
+        userMemberships,
         organizationAncestors,
         organizationChildren,
         organizationDescendants,

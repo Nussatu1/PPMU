@@ -210,3 +210,20 @@ export function resolveOrganizationScope(
     targetIds: [organizationId],
   }
 }
+
+/**
+ * Resolusi level eselon struktural pesantren:
+ * 0 = Kepala Pengurus (Pimpinan Tertinggi)
+ * 1 = Waka (Wakil Kepala Bidang)
+ * 2 = Seksi (Pengawal / Pembina Bidang)
+ * 3 = Organisasi (Unit Binaan / Pelaksana Teknis Non-Otonom)
+ */
+export function getPesantrenEchelonLevel(unitType?: string | null): number {
+  if (!unitType) return 3
+  const t = unitType.toLowerCase()
+  if (t === 'kepala_pengurus' || t === 'pimpinan') return 0
+  if (t === 'waka') return 1
+  if (t === 'seksi') return 2
+  if (t === 'organisasi' || t === 'lembaga' || t === 'kelompok' || t === 'unit') return 3
+  return 3
+}

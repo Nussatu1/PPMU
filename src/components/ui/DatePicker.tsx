@@ -1,4 +1,4 @@
-﻿import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { Portal } from '@headlessui/react'
 import { DayPicker, type DateRange } from 'react-day-picker'
 import 'react-day-picker/dist/style.css'
@@ -297,9 +297,9 @@ export const DatePicker: React.FC<DatePickerProps> = ({
   return (
     <div className={cn('w-full space-y-1', className)}>
       {label && (
-        <label htmlFor={pickerId} className="block text-xs font-semibold text-fg">
+        <label htmlFor={pickerId} className="block text-sm font-semibold text-fg">
           {label}
-          {required && <span className="text-red-500 ml-0.5 font-bold">*</span>}
+          {required && <span className="text-red-600 dark:text-red-400 ml-0.5 font-bold">*</span>}
         </label>
       )}
 
@@ -316,14 +316,14 @@ export const DatePicker: React.FC<DatePickerProps> = ({
           aria-haspopup="dialog"
           aria-expanded={isOpen}
           className={cn(
-            'w-full flex items-center justify-between rounded-lg border py-2 px-3 text-xs sm:text-sm text-left transition-colors shadow-2xs select-none min-h-[44px] sm:min-h-[2.375rem] cursor-pointer',
-            'bg-surface text-fg',
+            'w-full flex items-center justify-between rounded-lg bg-input-bg px-3 py-1.5 text-base sm:text-sm sm:leading-6 text-left transition duration-75 select-none min-h-[44px] sm:min-h-[2.375rem] cursor-pointer shadow-sm ring-1',
+            'text-fg',
             error
-              ? 'border-red-500 focus:ring-2 focus:ring-red-500/20'
+              ? 'ring-red-600 dark:ring-red-500 focus:outline-none focus:ring-2 focus:ring-red-600 dark:focus:ring-red-500'
               : isOpen
-              ? 'border-primary-500 ring-2 ring-primary-500/20'
-              : 'border-line-strong hover:border-line-strong focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20',
-            disabled && 'opacity-50 cursor-not-allowed bg-surface-muted text-fg-muted'
+              ? 'ring-2 ring-primary-600 dark:ring-primary-500'
+              : 'ring-line-strong hover:ring-primary-500/40 focus:outline-none focus:ring-2 focus:ring-primary-600 dark:focus:ring-primary-500',
+            disabled && 'opacity-60 cursor-not-allowed bg-surface-muted text-fg-muted'
           )}
         >
           <div className="flex items-center gap-2 truncate">

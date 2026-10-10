@@ -12,6 +12,8 @@ import type { RoleEntity } from '@/types/database'
 import {
   ALL_PERMISSION_ACTIONS,
   ALL_PERMISSION_RESOURCES,
+  ALL_PAGE_KEYS,
+  ALL_WIDGET_KEYS,
 } from '@/lib/authorization'
 import {
   HeroPlus,
@@ -20,6 +22,11 @@ import {
   HeroPencilSquare,
   HeroTrash,
 } from '@/components/icons/HeroIcons'
+
+const TOTAL_SYSTEM_PERMISSIONS =
+  ALL_PERMISSION_RESOURCES.length * ALL_PERMISSION_ACTIONS.length +
+  ALL_PAGE_KEYS.length +
+  ALL_WIDGET_KEYS.length
 
 export const RoleListPage: React.FC = () => {
   const navigate = useNavigate()
@@ -72,7 +79,7 @@ export const RoleListPage: React.FC = () => {
   const columns: ColumnDef<RoleEntity>[] = [
     {
       key: 'name',
-      label: 'Nama Peran / Role',
+      label: 'Peran',
       sortable: true,
       render: (role) => (
         <div className="flex items-center gap-2.5">
@@ -88,17 +95,19 @@ export const RoleListPage: React.FC = () => {
                 </span>
               )}
             </div>
-            <p className="text-xs text-fg-muted mt-0.5 line-clamp-1">{role.description}</p>
+            {role.description && (
+              <p className="text-xs text-fg-muted mt-0.5 line-clamp-1">{role.description}</p>
+            )}
           </div>
         </div>
       ),
     },
     {
       key: 'permissions',
-      label: 'Cakupan Hak Akses',
+      label: 'Hak Akses',
       render: (role) => (
         <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-surface-muted text-fg border border-line">
-          {role.permissions.length} dari {ALL_PERMISSION_RESOURCES.length * ALL_PERMISSION_ACTIONS.length} Izin
+          {role.permissions.length} dari {TOTAL_SYSTEM_PERMISSIONS} Izin
         </span>
       ),
     },
@@ -113,7 +122,7 @@ export const RoleListPage: React.FC = () => {
     },
     {
       key: 'id',
-      label: 'Duplikasi Peran',
+      label: 'Aksi',
       render: (role) => (
         <button
           type="button"
@@ -134,7 +143,7 @@ export const RoleListPage: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-fg flex items-center gap-2.5">
           <HeroShieldCheck className="w-6 h-6 text-amber-500" />
-          Peran & Wewenang
+          Peran
         </h1>
 
         <Button
@@ -143,7 +152,7 @@ export const RoleListPage: React.FC = () => {
           icon={<HeroPlus className="w-4 h-4 mr-1.5" />}
           className="shrink-0 self-start sm:self-auto"
         >
-          Tambah Peran
+          Tambah
         </Button>
       </div>
 
@@ -171,7 +180,7 @@ export const RoleListPage: React.FC = () => {
                 </div>
                 <div className="flex items-center gap-2 mt-1 text-xs text-fg-muted flex-wrap">
                   <span className="font-medium text-fg">
-                    {role.permissions.length} dari {ALL_PERMISSION_RESOURCES.length * ALL_PERMISSION_ACTIONS.length} Izin
+                    {role.permissions.length} dari {TOTAL_SYSTEM_PERMISSIONS} Izin
                   </span>
                   <span>•</span>
                   <Badge variant={role.status === 'active' ? 'success' : 'danger'} dot>

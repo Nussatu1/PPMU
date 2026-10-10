@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom'
 import { Breadcrumb } from '@/components/layout/Breadcrumb'
 import { PageContainer } from '@/components/layout/PageContainer'
 import { Section } from '@/components/ui/Section'
-import { SectionGrid } from '@/components/ui/SectionGrid'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
@@ -12,7 +11,7 @@ import { NumberInput } from '@/components/ui/NumberInput'
 import { useToast } from '@/context/ToastContext'
 import { useAuth } from '@/context/AuthContext'
 import { dataService } from '@/lib/dataService'
-import type { Program } from '@/types/database'
+import type { Program, Section as OrgSection } from '@/types/database'
 import {
   HeroClipboardDocumentList,
   HeroArrowLeft,
@@ -26,6 +25,7 @@ import {
 type FormData = {
   title: string
   program_id: string
+  section_id?: string
   period: string
   content: string
   achievement_summary: string
@@ -35,10 +35,11 @@ type FormData = {
   evaluation_recommendations: string
 }
 
-const emptyForm = (progs: Program[]): FormData => ({
+const emptyForm = (progs: Program[], secs: OrgSection[]): FormData => ({
   title: '',
   program_id: progs[0]?.id || '',
-  period: 'Bulan Maret 2026',
+  section_id: secs[0]?.id || '',
+  period: 'Triwulan I 2026',
   content: '',
   achievement_summary: '',
   budget_spent: 0,
@@ -53,21 +54,29 @@ export const ReportCreatePage: React.FC = () => {
   const { success, error } = useToast()
 
   const [programs, setPrograms] = useState<Program[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  const [sections, setSections] = useState<OrgSection[]>([])
+  const [isLoading, setIsLoading] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
-  const [formData, setFormData] = useState<FormData>(emptyForm([]))
+  const [formData, setFormData] = useState<FormData>(emptyForm([], []))
 
   const orgId = currentOrganization?.id || ''
   const set = (f: keyof FormData, v: string | number) =>
     setFormData((p) => ({ ...p, [f]: v }))
 
   const loadData = useCallback(async () => {
-    if (!orgId) return
+    if (!orgId) {
+      setIsLoading(false)
+      return
+    }
     setIsLoading(true)
     try {
-      const progs = await dataService.getPrograms(orgId, user)
+      const [progs, secs] = await Promise.all([
+        dataService.getPrograms(orgId, user),
+        dataService.getSections(orgId, undefined, user),
+      ])
       setPrograms(progs)
-      setFormData(emptyForm(progs))
+      setSections(secs)
+      setFormData(emptyForm(progs, secs))
     } catch (err: unknown) {
       error('Kesalahan', err instanceof Error ? err.message : 'Gagal memuat data')
     } finally {
@@ -93,7 +102,7 @@ export const ReportCreatePage: React.FC = () => {
       )
       success('Laporan Disusun', `"${formData.title}" berhasil dibuat sebagai draft.`)
       if (andCreateAnother) {
-        setFormData(emptyForm(programs))
+        setFormData(emptyForm(programs, sections))
       } else {
         navigate('/reports')
       }
@@ -112,22 +121,22 @@ export const ReportCreatePage: React.FC = () => {
           <Breadcrumb
             items={[
               { label: 'Organisasi', href: '/reports' },
-              { label: 'Laporan & Evaluasi', href: '/reports' },
-              { label: 'Susun Baru' },
+              { label: 'Laporan', href: '/reports' },
+              { label: 'Laporan Baru' },
             ]}
           />
           <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-fg">
-            Susun Laporan Kinerja Baru
+            Laporan Baru
           </h1>
-          <p className="text-sm text-fg-muted">
-            Dokumentasikan pelaksanaan program kerja, realisasi penyerapan dana, kendala, dan evaluasi hasil.
+          <p className="text-xs sm:text-sm text-fg-muted">
+            Susun laporan pertanggungjawaban kegiatan, realisasi dana, dan evaluasi kendala.
           </p>
         </div>
         <Button
           variant="secondary"
           icon={<HeroArrowLeft className="w-4 h-4" />}
           onClick={() => navigate('/reports')}
-          className="hidden sm:inline-flex"
+          className="hidden sm:inline-flex shrink-0 self-start sm:self-auto"
         >
           Kembali
         </Button>
@@ -138,155 +147,189 @@ export const ReportCreatePage: React.FC = () => {
           <div className="w-6 h-6 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
         </div>
       ) : (
-        <form noValidate onSubmit={(e) => handleSave(e, false)} className="space-y-6">
-          <SectionGrid columns={12}>
-            {/* Identitas Laporan */}
+        <form noValidate onSubmit={(e) => handleSave(e, false)} className="space-y-6 pb-20 sm:pb-24">
+          <div className="space-y-6">
+            {/* SECTION 1: INFORMASI LAPORAN (DENGAN 3 SELECTION BERDAMPINGAN) */}
             <Section
-              title="Identitas Laporan"
-              description="Judul dokumen laporan, program induk yang dipertanggungjawabkan, dan periode."
-              icon={<HeroClipboardDocumentList className="w-5 h-5" />}
-              columns={12}
-              className="lg:col-span-7"
+              title="Informasi & Ruang Lingkup Laporan"
+              icon={<HeroClipboardDocumentList className="w-5 h-5 text-amber-500" />}
+              columns={1}
             >
-              <div className="col-span-full">
+              <div className="space-y-5">
                 <Input
                   label="Judul Laporan"
                   required
                   value={formData.title}
                   onChange={(e) => set('title', e.target.value)}
-                  placeholder="Contoh: Laporan Akuntabilitas Pelaksanaan Riset Semester 1"
+                  placeholder="Contoh: Laporan Akuntabilitas Layanan Riset Terpadu Triwulan I"
                 />
-              </div>
-              <div className="col-span-full sm:col-span-7">
-                <Select
-                  label="Induk Program"
-                  required
-                  value={formData.program_id}
-                  options={programs.map((p) => ({
-                    value: p.id,
-                    label: p.title || p.name,
-                  }))}
-                  onChange={(e) => set('program_id', e.target.value)}
-                />
-              </div>
-              <div className="col-span-full sm:col-span-5">
-                <Input
-                  label="Periode Laporan"
-                  value={formData.period}
-                  onChange={(e) => set('period', e.target.value)}
-                  placeholder="Contoh: Triwulan I 2026"
-                />
+
+                {/* 3 SELECTION DALAM 1 BARIS BERDAMPINGAN */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-5">
+                  <Select
+                    label="Program Kerja"
+                    required
+                    value={formData.program_id}
+                    options={
+                      programs.length === 0
+                        ? [{ value: '', label: 'Belum ada program' }]
+                        : programs.map((p) => ({
+                            value: p.id,
+                            label: `${p.title || p.name}${p.code ? ` (${p.code})` : ''}`,
+                          }))
+                    }
+                    onChange={(e) => set('program_id', e.target.value)}
+                    helperText="Program induk yang dilaporkan"
+                  />
+
+                  <Select
+                    label="Unit / Seksi Pelaksana"
+                    value={formData.section_id || ''}
+                    options={
+                      sections.length === 0
+                        ? [{ value: '', label: 'Seksi Utama / Internal' }]
+                        : [
+                            { value: '', label: '— Seluruh Seksi / Terpadu —' },
+                            ...sections.map((s) => ({
+                              value: s.id,
+                              label: `${s.name} (${s.code})`,
+                            })),
+                          ]
+                    }
+                    onChange={(e) => set('section_id', e.target.value)}
+                    helperText="Unit penanggung jawab kegiatan"
+                  />
+
+                  <Select
+                    label="Periode Pelaporan"
+                    value={formData.period}
+                    options={[
+                      { value: 'Triwulan I 2026', label: 'Triwulan I (Jan - Mar 2026)' },
+                      { value: 'Triwulan II 2026', label: 'Triwulan II (Apr - Jun 2026)' },
+                      { value: 'Triwulan III 2026', label: 'Triwulan III (Jul - Sep 2026)' },
+                      { value: 'Triwulan IV 2026', label: 'Triwulan IV (Okt - Des 2026)' },
+                      { value: 'Bulan Maret 2026', label: 'Bulan Maret 2026' },
+                      { value: 'Tahunan 2026', label: 'Tahunan Periode 2026' },
+                    ]}
+                    onChange={(e) => set('period', e.target.value)}
+                    helperText="Rentang waktu siklus pelaporan"
+                  />
+                </div>
               </div>
             </Section>
 
-            {/* Capaian & Realisasi Dana */}
+            {/* SECTION 2: CAPAIAN & REALISASI DANA */}
             <Section
               title="Capaian & Realisasi Dana"
-              description="Ringkasan persentase capaian dan jumlah dana yang telah terserap pada kegiatan ini."
-              icon={<HeroCurrencyDollar className="w-5 h-5" />}
-              columns={12}
-              className="lg:col-span-5"
+              icon={<HeroCurrencyDollar className="w-5 h-5 text-amber-500" />}
+              columns={2}
             >
-              <div className="col-span-full">
+              <div>
                 <Input
-                  label="Ringkasan Capaian Utama"
+                  label="Ringkasan Capaian Output"
                   value={formData.achievement_summary}
                   onChange={(e) => set('achievement_summary', e.target.value)}
-                  placeholder="Contoh: Capaian 94% dari target rencana"
+                  placeholder="Contoh: Terealisasi 94% — 47 modul riset dipublikasikan"
+                  helperText="Keterangan ringkas persentase atau output fisik"
                 />
               </div>
-              <div className="col-span-full">
+
+              <div>
                 <NumberInput
-                  label="Realisasi Dana yang Dilaporkan"
+                  label="Realisasi Dana (Diserap)"
                   prefix="Rp"
                   value={formData.budget_spent}
                   onChange={(val) => set('budget_spent', val || 0)}
-                  helperText="Total serapan kas yang dilaporkan."
+                  helperText="Total dana kas yang telah terealisasi sesuai bukti"
                 />
               </div>
             </Section>
 
-            {/* Uraian Pelaksanaan Kegiatan */}
+            {/* SECTION 3: URAIAN PELAKSANAAN KEGIATAN */}
             <Section
               title="Uraian Pelaksanaan Kegiatan"
-              description="Narasi terperinci mengenai rangkaian kegiatan, luaran, dan keterlibatan personel."
-              icon={<HeroDocumentText className="w-5 h-5" />}
+              icon={<HeroDocumentText className="w-5 h-5 text-amber-500" />}
               columns={1}
-              className="col-span-full"
             >
               <Textarea
-                label="Uraian Lengkap Laporan & Realisasi Kegiatan"
-                rows={3}
+                label="Uraian Lengkap Kegiatan"
+                rows={4}
                 autoGrow
                 required
                 value={formData.content}
                 onChange={(e) => set('content', e.target.value)}
-                placeholder="Jelaskan secara komprehensif latar belakang, tahapan pelaksanaan, jumlah peserta, output konkret, dan status akhir kegiatan..."
+                placeholder="Deskripsikan latar belakang, tahapan pelaksanaan, jumlah peserta, output konkret..."
               />
             </Section>
 
-            {/* Evaluasi, Kendala & Rekomendasi */}
+            {/* SECTION 4: EVALUASI & KENDALA (TETAP SEBAGAIMANA SEKARANG - 3 KOLOM) */}
             <Section
-              title="Evaluasi, Kendala & Rekomendasi"
-              description="Analisis hambatan di lapangan, pembelajaran, dan rekomendasi tindak lanjut bagi pimpinan."
-              icon={<HeroExclamationTriangle className="w-5 h-5" />}
+              title="Evaluasi & Kendala"
+              icon={<HeroExclamationTriangle className="w-5 h-5 text-amber-500" />}
               columns={3}
-              className="col-span-full"
             >
               <Textarea
-                label="Kendala yang Dihadapi"
+                label="Kendala"
                 rows={3}
                 autoGrow
                 value={formData.evaluation_constraints}
                 onChange={(e) => set('evaluation_constraints', e.target.value)}
-                placeholder="Faktor penghambat pelaksanaan..."
+                placeholder="Faktor penghambat..."
+                helperText="Hambatan yang terjadi saat kegiatan berlangsung"
               />
               <Textarea
-                label="Pelajaran (Lessons Learned)"
+                label="Pembelajaran"
                 rows={3}
                 autoGrow
                 value={formData.evaluation_lessons}
                 onChange={(e) => set('evaluation_lessons', e.target.value)}
-                placeholder="Poin pembelajaran utama..."
+                placeholder="Poin pembelajaran..."
+                helperText="Pelajaran penting untuk program mendatang"
               />
               <Textarea
-                label="Rekomendasi Tindak Lanjut"
+                label="Rekomendasi"
                 rows={3}
                 autoGrow
                 value={formData.evaluation_recommendations}
                 onChange={(e) => set('evaluation_recommendations', e.target.value)}
-                placeholder="Saran perbaikan ke depan..."
+                placeholder="Rekomendasi tindak lanjut..."
+                helperText="Langkah konkret bagi pimpinan / seksi pelaksana"
               />
             </Section>
-          </SectionGrid>
+          </div>
 
-          {/* Actions Bar */}
-          <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3 pt-4 border-t border-line">
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => navigate('/reports')}
-            >
-              Batal
-            </Button>
-            <div className="flex items-center gap-3">
+          {/* Sticky Footer Action Bar */}
+          <div className="fixed bottom-0 inset-x-0 z-30 bg-surface/95 backdrop-blur-md border-t border-line py-3 px-4 sm:px-6 lg:px-8 shadow-lg">
+            <div className="max-w-7xl mx-auto flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3">
               <Button
                 type="button"
                 variant="secondary"
-                disabled={isSaving}
-                onClick={(e) => handleSave(e as unknown as React.FormEvent, true)}
+                onClick={() => navigate('/reports')}
+                className="w-full sm:w-auto justify-center"
               >
-                <HeroPlus className="w-4 h-4 mr-1.5" />
-                Buat & Buat Lainnya
+                Batal
               </Button>
-              <Button
-                type="submit"
-                variant="primary"
-                disabled={isSaving}
-              >
-                <HeroCheck className="w-4 h-4 mr-1.5" />
-                {isSaving ? 'Memproses...' : 'Buat'}
-              </Button>
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 w-full sm:w-auto">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={isSaving}
+                  onClick={(e) => handleSave(e as unknown as React.FormEvent, true)}
+                  className="w-full sm:w-auto justify-center"
+                >
+                  <HeroPlus className="w-4 h-4 mr-1.5" />
+                  Buat & Buat Lainnya
+                </Button>
+                <Button
+                  type="submit"
+                  variant="primary"
+                  disabled={isSaving}
+                  className="w-full sm:w-auto justify-center font-semibold"
+                >
+                  <HeroCheck className="w-4 h-4 mr-1.5" />
+                  {isSaving ? 'Memproses...' : 'Simpan Laporan'}
+                </Button>
+              </div>
             </div>
           </div>
         </form>
@@ -294,3 +337,4 @@ export const ReportCreatePage: React.FC = () => {
     </PageContainer>
   )
 }
+

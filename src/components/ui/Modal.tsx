@@ -45,32 +45,32 @@ export const Modal: React.FC<ModalProps> = ({
         className="fixed inset-0 bg-overlay transition-opacity data-closed:opacity-0 data-enter:duration-200 data-leave:duration-150"
       />
 
-      <div className="fixed inset-0 z-10 w-screen overflow-y-auto p-4 flex min-h-full items-center justify-center">
+      <div className="fixed inset-0 z-10 w-screen overflow-y-auto p-2 sm:p-4 flex min-h-full items-end sm:items-center justify-center">
         <DialogPanel
           transition
           className={cn(
-            'relative w-full rounded-xl shadow-xl overflow-hidden text-left bg-surface ring-1 ring-line',
-            'transition-all data-closed:scale-95 data-closed:opacity-0 data-enter:duration-200 data-leave:duration-150',
+            'relative w-full rounded-t-2xl sm:rounded-xl shadow-xl overflow-hidden text-left bg-surface ring-1 ring-line max-h-[90vh] sm:max-h-[85vh] flex flex-col',
+            'transition-all data-closed:translate-y-4 sm:data-closed:translate-y-0 data-closed:scale-95 data-closed:opacity-0 data-enter:duration-200 data-leave:duration-150',
             maxWidthStyles[activeWidth] || 'max-w-md'
           )}
         >
           {/* Header */}
           {(title || description) && (
-            <div className="px-6 py-4 border-b border-line-divider flex items-center justify-between bg-surface-muted">
+            <div className="px-4 py-3.5 sm:px-6 sm:py-4 border-b border-line-divider flex items-center justify-between bg-surface-muted shrink-0">
               <div>
                 {title && (
-                  <DialogTitle className="text-base font-semibold text-fg">
+                  <DialogTitle className="text-sm sm:text-base font-semibold text-fg">
                     {title}
                   </DialogTitle>
                 )}
                 {description && (
-                  <p className="text-sm text-fg-muted mt-0.5">{description}</p>
+                  <p className="text-xs sm:text-sm text-fg-muted mt-0.5">{description}</p>
                 )}
               </div>
               <button
                 type="button"
                 onClick={onClose}
-                className="p-1 rounded-lg text-fg-muted hover:text-fg hover:bg-hover-bg transition-colors cursor-pointer"
+                className="w-9 h-9 sm:w-8 sm:h-8 flex items-center justify-center rounded-lg text-fg-muted hover:text-fg hover:bg-hover-bg transition-colors cursor-pointer"
                 aria-label="Tutup modal"
               >
                 <HeroXMark className="w-5 h-5" />
@@ -79,11 +79,11 @@ export const Modal: React.FC<ModalProps> = ({
           )}
 
           {/* Body */}
-          <div className="p-6">{children}</div>
+          <div className="p-4 sm:p-6 overflow-y-auto overscroll-contain">{children}</div>
 
           {/* Footer */}
           {footer && (
-            <div className="px-6 py-4 border-t border-line-divider bg-surface-muted flex items-center justify-end gap-3">
+            <div className="px-4 py-3 sm:px-6 sm:py-4 border-t border-line-divider bg-surface-muted flex items-center justify-end gap-2.5 sm:gap-3 shrink-0 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:pb-4">
               {footer}
             </div>
           )}

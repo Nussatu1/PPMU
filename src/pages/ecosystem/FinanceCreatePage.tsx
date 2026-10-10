@@ -53,7 +53,7 @@ export const FinanceCreatePage: React.FC = () => {
   const { success, error } = useToast()
 
   const [budgets, setBudgets] = useState<Budget[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  const [isLoading, setIsLoading] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [formData, setFormData] = useState<FormData>(emptyForm(initialType))
 
@@ -75,7 +75,10 @@ export const FinanceCreatePage: React.FC = () => {
   }
 
   const loadData = useCallback(async () => {
-    if (!orgId) return
+    if (!orgId) {
+      setIsLoading(false)
+      return
+    }
     setIsLoading(true)
     try {
       const buds = await dataService.getBudgets(orgId, undefined, user)
@@ -147,18 +150,13 @@ export const FinanceCreatePage: React.FC = () => {
           <Breadcrumb
             items={[
               { label: 'Organisasi', href: '/finance' },
-              { label: 'Anggaran & Keuangan', href: '/finance' },
-              { label: isIncome ? 'Catat Pemasukan' : 'Catat Pengeluaran' },
+              { label: 'Keuangan', href: '/finance' },
+              { label: isIncome ? 'Pemasukan' : 'Pengeluaran' },
             ]}
           />
           <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-fg">
-            {isIncome ? 'Catat Pemasukan Kas Baru' : 'Catat Pengeluaran Baru'}
+            {isIncome ? 'Pemasukan Baru' : 'Pengeluaran Baru'}
           </h1>
-          <p className="hidden sm:block text-xs sm:text-sm text-fg-muted">
-            {isIncome
-              ? 'Bukukan penerimaan kas masuk, dropping pagu anggaran dari Pengurus 1, kas santri, donasi, atau infaq.'
-              : 'Bukukan transaksi mutasi belanja program, alokasi pos anggaran, serta lampiran bukti nota digital.'}
-          </p>
         </div>
         <Button
           variant="secondary"
@@ -177,80 +175,55 @@ export const FinanceCreatePage: React.FC = () => {
       ) : (
         <form noValidate onSubmit={(e) => handleSave(e, false)} className="space-y-6">
           {/* Switcher Jenis Transaksi: Pemasukan vs Pengeluaran */}
-          <div className="p-4 rounded-xl border border-line bg-surface shadow-2xs space-y-3">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-bold text-fg uppercase tracking-wider">
-                Pilih Jenis Transaksi Keuangan <span className="text-red-500">*</span>
-              </label>
-              <span className="text-[11px] text-fg-muted font-medium">
-                {isIncome ? 'Penerimaan Kas (+)' : 'Pengeluaran Kas (-)'}
-              </span>
-            </div>
+          <div className="p-3.5 sm:p-4 rounded-xl border border-line bg-surface shadow-2xs space-y-2.5">
+            <label className="text-xs font-bold text-fg uppercase tracking-wider block">
+              Jenis Transaksi <span className="text-red-500">*</span>
+            </label>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <button
                 type="button"
                 onClick={() => handleTypeChange('income')}
-                className={`flex items-start gap-3 p-3.5 rounded-xl border text-left transition-all cursor-pointer ${
+                className={`flex items-center gap-3 p-3 rounded-xl border text-left transition-all cursor-pointer ${
                   isIncome
                     ? 'bg-emerald-500/10 border-emerald-500/50 ring-2 ring-emerald-500/20'
                     : 'bg-surface-muted/50 border-line hover:bg-hover-bg'
                 }`}
               >
                 <div
-                  className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
+                  className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
                     isIncome
                       ? 'bg-emerald-500 text-white shadow-xs'
                       : 'bg-surface border border-line text-fg-muted'
                   }`}
                 >
-                  <HeroArrowTrendingUp className="w-5 h-5" />
+                  <HeroArrowTrendingUp className="w-4 h-4" />
                 </div>
                 <div className="min-w-0">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-xs font-bold text-fg">Pemasukan (Kas Masuk)</span>
-                    {isIncome && (
-                      <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded">
-                        Aktif
-                      </span>
-                    )}
-                  </div>
-                  <p className="hidden sm:block text-[11px] text-fg-muted mt-0.5 leading-snug">
-                    Dropping dana dari Pengurus 1, kas santri, donasi, sumbangan, atau infaq.
-                  </p>
+                  <span className="text-xs font-bold text-fg">Pemasukan</span>
                 </div>
               </button>
 
               <button
                 type="button"
                 onClick={() => handleTypeChange('expense')}
-                className={`flex items-start gap-3 p-3.5 rounded-xl border text-left transition-all cursor-pointer ${
+                className={`flex items-center gap-3 p-3 rounded-xl border text-left transition-all cursor-pointer ${
                   !isIncome
                     ? 'bg-amber-500/10 border-amber-500/50 ring-2 ring-amber-500/20'
                     : 'bg-surface-muted/50 border-line hover:bg-hover-bg'
                 }`}
               >
                 <div
-                  className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
+                  className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
                     !isIncome
                       ? 'bg-amber-500 text-white shadow-xs'
                       : 'bg-surface border border-line text-fg-muted'
                   }`}
                 >
-                  <HeroArrowTrendingDown className="w-5 h-5" />
+                  <HeroArrowTrendingDown className="w-4 h-4" />
                 </div>
                 <div className="min-w-0">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-xs font-bold text-fg">Pengeluaran (Kas Keluar)</span>
-                    {!isIncome && (
-                      <span className="text-[10px] font-semibold text-amber-600 dark:text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded">
-                        Aktif
-                      </span>
-                    )}
-                  </div>
-                  <p className="hidden sm:block text-[11px] text-fg-muted mt-0.5 leading-snug">
-                    Belanja kegiatan program, operasional, bisyarah pembina, atau sarana ibadah.
-                  </p>
+                  <span className="text-xs font-bold text-fg">Pengeluaran</span>
                 </div>
               </button>
             </div>
@@ -259,19 +232,14 @@ export const FinanceCreatePage: React.FC = () => {
           <SectionGrid columns={12}>
             {/* Pos Anggaran & Kategori */}
             <Section
-              title={isIncome ? 'Pos Anggaran & Kategori Pemasukan' : 'Pos Anggaran & Kategori Belanja'}
-              description={
-                isIncome
-                  ? 'Tentukan pos anggaran tujuan dan jenis klasifikasi kas masuk.'
-                  : 'Tentukan alokasi sumber pagu program dan jenis klasifikasi operasional.'
-              }
+              title="Pos & Kategori"
               icon={<HeroCurrencyDollar className="w-5 h-5" />}
               columns={12}
               className="lg:col-span-6"
             >
               <div className="col-span-full md:col-span-7">
                 <Select
-                  label={isIncome ? 'Pos Anggaran Sasaran' : 'Pos Anggaran Program'}
+                  label="Pos Anggaran"
                   required
                   value={formData.budget_id}
                   onValueChange={(val) => set('budget_id', String(val))}
@@ -290,33 +258,24 @@ export const FinanceCreatePage: React.FC = () => {
 
               <div className="col-span-full md:col-span-5">
                 <Input
-                  label={isIncome ? 'Kategori Pemasukan' : 'Kategori Pengeluaran'}
+                  label="Kategori"
                   value={formData.category}
                   onChange={(e) => set('category', e.target.value)}
-                  placeholder={
-                    isIncome
-                      ? 'Contoh: Dropping Pagu Pengurus 1, Kas Iuran Santri, Infaq'
-                      : 'Contoh: Honorarium Narasumber, Sewa Gedung, Konsumsi Peserta'
-                  }
+                  placeholder={isIncome ? 'Dropping / Infaq' : 'Konsumsi / Operasional'}
                 />
               </div>
             </Section>
 
             {/* Nominal & Waktu Transaksi */}
             <Section
-              title={isIncome ? 'Nominal & Waktu Penerimaan' : 'Nominal & Waktu Pembukuan'}
-              description={
-                isIncome
-                  ? 'Nilai kas masuk yang diterima dan tanggal sah mutasi penerimaan.'
-                  : 'Nilai kas yang dikeluarkan dan tanggal sah transaksi mutasi.'
-              }
+              title="Nominal & Waktu"
               icon={<HeroCalendar className="w-5 h-5" />}
               columns={12}
               className="lg:col-span-6"
             >
               <div className="col-span-full md:col-span-6">
                 <NumberInput
-                  label={isIncome ? 'Nominal Penerimaan Kas' : 'Nominal Biaya Belanja'}
+                  label="Nominal"
                   prefix="Rp"
                   required
                   value={formData.amount}
@@ -326,7 +285,7 @@ export const FinanceCreatePage: React.FC = () => {
 
               <div className="col-span-full md:col-span-6">
                 <DatePicker
-                  label={isIncome ? 'Tanggal Penerimaan Kas' : 'Tanggal Transaksi Kas'}
+                  label="Tanggal"
                   required
                   value={formData.transaction_date}
                   onChange={(val) => set('transaction_date', val)}
@@ -336,18 +295,13 @@ export const FinanceCreatePage: React.FC = () => {
 
             {/* Uraian & Bukti */}
             <Section
-              title={isIncome ? 'Uraian & Bukti Penerimaan' : 'Uraian & Bukti Kwitansi'}
-              description={
-                isIncome
-                  ? 'Rincian asal dana/sumber kas masuk dan berkas digital kwitansi/slip transfer.'
-                  : 'Rincian peruntukan pembelanjaan dan berkas digital kwitansi/faktur sah.'
-              }
+              title="Uraian & Bukti"
               icon={<HeroDocumentText className="w-5 h-5" />}
               columns={1}
               className="col-span-full"
             >
               <Textarea
-                label={isIncome ? 'Uraian Detail Pemasukan' : 'Uraian Detail Pengeluaran'}
+                label="Uraian Transaksi"
                 rows={3}
                 autoGrow
                 required
@@ -355,25 +309,17 @@ export const FinanceCreatePage: React.FC = () => {
                 onChange={(e) => set('description', e.target.value)}
                 placeholder={
                   isIncome
-                    ? 'Contoh: Penerimaan dropping pagu kas operasional triwulan I dari Pengurus 1 untuk bimbingan fasholatan...'
-                    : 'Contoh: Pembayaran honorarium 2 orang narasumber seminar riset batch 1 sesuai ketentuan...'
+                    ? 'Penerimaan dropping pagu kas operasional triwulan I...'
+                    : 'Pembayaran honorarium narasumber riset batch 1...'
                 }
               />
 
               <FileUpload
-                label={
-                  isIncome
-                    ? 'Unggah Bukti Transfer / Kwitansi Masuk (Opsional)'
-                    : 'Unggah Berkas Bukti Bayar / Nota Fisik (Opsional)'
-                }
+                label="Bukti Transaksi"
                 value={formData.proof_url}
                 onChange={(val) => set('proof_url', val)}
                 accept=".pdf,.jpg,.jpeg,.png"
-                helperText={
-                  isIncome
-                    ? 'Pindai bukti transfer bank, slip setoran, atau kuitansi tanda terima (Maks. 10 MB).'
-                    : 'Pindai kuitansi, faktur belanja, atau nota kas digital (Maks. 10 MB).'
-                }
+                helperText="Format berkas: PDF, JPG, PNG (Maks. 10 MB)"
               />
             </Section>
           </SectionGrid>

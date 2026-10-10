@@ -5,10 +5,15 @@ import {
   HeroSun,
   HeroComputerDesktop,
   HeroArrowRightStartOnRectangle,
+  HeroTrash,
+  HeroExclamationTriangle,
 } from '@/components/icons/HeroIcons'
 import { useAuth } from '@/context/AuthContext'
 import { useTheme } from '@/context/ThemeContext'
 import { useToast } from '@/context/ToastContext'
+import { dataService } from '@/lib/dataService'
+import { Modal } from '@/components/ui/Modal'
+import { Button } from '@/components/ui/Button'
 import { t } from '@/i18n'
 import { cn } from '@/lib/utils'
 
@@ -19,7 +24,7 @@ export interface UserMenuProps {
 }
 
 /**
- * Menu profil & preferensi (mode tema + logout).
+ * Menu profil & preferensi (mode tema + logout + reset clean database).
  * Ini satu-satunya jalur logout aplikasi, sehingga wajib tersedia di desktop maupun mobile.
  */
 export const UserMenu: React.FC<UserMenuProps> = ({ panelMode = 'anchor', className }) => {
@@ -30,6 +35,7 @@ export const UserMenu: React.FC<UserMenuProps> = ({ panelMode = 'anchor', classN
 
   const [showDropdown, setShowDropdown] = useState(false)
   const [avatarError, setAvatarError] = useState(false)
+  const [isResetModalOpen, setIsResetModalOpen] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -55,6 +61,14 @@ export const UserMenu: React.FC<UserMenuProps> = ({ panelMode = 'anchor', classN
     await logout()
     success(t.topbar.loggedOutSuccess, '')
     navigate('/login')
+  }
+
+  const handleClearAllMockData = () => {
+    dataService.clearAllMockData()
+    setIsResetModalOpen(false)
+    setShowDropdown(false)
+    success('Data Dibersihkan', 'Semua mock data dihapus. Database lokal bersih dan siap input baru.')
+    window.location.reload()
   }
 
   const userInitial = user?.name?.[0]?.toUpperCase() || 'A'
@@ -128,6 +142,10 @@ export const UserMenu: React.FC<UserMenuProps> = ({ panelMode = 'anchor', classN
           mode={mode}
           setMode={setMode}
           onLogout={handleLogout}
+          onOpenResetModal={() => {
+            setShowDropdown(false)
+            setIsResetModalOpen(true)
+          }}
           avatarError={avatarError}
           onAvatarError={() => setAvatarError(true)}
           user={user}
@@ -135,10 +153,52 @@ export const UserMenu: React.FC<UserMenuProps> = ({ panelMode = 'anchor', classN
           modeButtonClass={modeButtonClass}
         />
       )}
+
+      {/* Modal Konfirmasi Hapus Semua Mock Data */}
+      <Modal
+        isOpen={isResetModalOpen}
+        onClose={() => setIsResetModalOpen(false)}
+        title="Bersihkan Semua Data (Clean Slate)"
+        size="md"
+      >
+        <div className="space-y-4">
+          <div className="flex items-start gap-3 p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-300">
+            <HeroExclamationTriangle className="w-5 h-5 shrink-0 mt-0.5" />
+            <div className="text-xs space-y-1">
+              <p className="font-semibold">Tindakan ini akan mengosongkan seluruh mock data lokal.</p>
+              <p className="text-fg-muted">
+                Semua jabatan, organisasi, program kerja, anggaran, dan akun demo akan dihapus bersih.
+                Hanya akun master <strong>Pengurus 1 (Superadmin)</strong> yang dipertahankan agar Anda dapat login dan mulai menginput data secara manual dari nol.
+              </p>
+            </div>
+          </div>
+
+          <p className="text-xs text-fg-muted">
+            Data manual baru yang Anda input nantinya akan otomatis tersimpan permanen di penyimpanan lokal (localStorage) browser Anda.
+          </p>
+
+          <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-line">
+            <Button
+              variant="outline"
+              type="button"
+              onClick={() => setIsResetModalOpen(false)}
+            >
+              Batal
+            </Button>
+            <Button
+              variant="danger"
+              type="button"
+              onClick={handleClearAllMockData}
+            >
+              <HeroTrash className="w-4 h-4 mr-1.5" />
+              Ya, Hapus Semua & Mulai dari Nol
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }
-
 
 interface UserMenuPanelProps {
   panelMode: 'anchor' | 'header'
@@ -148,6 +208,7 @@ interface UserMenuPanelProps {
   mode: string
   setMode: (m: 'dark' | 'light' | 'system') => void
   onLogout: () => void
+  onOpenResetModal: () => void
   avatarError: boolean
   onAvatarError: () => void
   user: { name?: string; email?: string; avatar_url?: string; role?: string; is_superadmin?: boolean } | null
@@ -163,6 +224,7 @@ const UserMenuPanel: React.FC<UserMenuPanelProps> = ({
   mode,
   setMode,
   onLogout,
+  onOpenResetModal,
   avatarError,
   onAvatarError,
   user,
@@ -196,7 +258,7 @@ const UserMenuPanel: React.FC<UserMenuPanelProps> = ({
           <div className="min-w-0">
             <p className="text-xs font-semibold text-fg truncate">{user?.name || 'Administrator'}</p>
             <p className="text-[11px] text-fg-muted truncate mt-0.5">
-              {user?.email || 'admin@filamentphp.com'}
+              {user?.email || 'pengurus1@bakid.ponpes.id'}
             </p>
           </div>
         </div>
@@ -252,12 +314,22 @@ const UserMenuPanel: React.FC<UserMenuPanelProps> = ({
       </div>
     </div>
 
-    {/* Logout */}
-    <div className="p-1">
+    {/* Action Menu: Bersihkan Mock Data & Logout */}
+    <div className="p-1 space-y-0.5">
+      <button
+        type="button"
+        onClick={onOpenResetModal}
+        className="w-full flex items-center gap-2.5 px-3 py-2 min-h-[40px] rounded-lg text-xs font-medium text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-500/10 transition-colors text-left cursor-pointer"
+        title="Bersihkan semua mock data dan mulai dari database kosong"
+      >
+        <HeroTrash className="w-4 h-4 shrink-0 text-amber-500" />
+        <span>Hapus Semua Mock Data</span>
+      </button>
+
       <button
         type="button"
         onClick={onLogout}
-        className="w-full flex items-center gap-2.5 px-3 py-2.5 min-h-[44px] rounded-lg text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors text-left cursor-pointer"
+        className="w-full flex items-center gap-2.5 px-3 py-2 min-h-[40px] rounded-lg text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors text-left cursor-pointer"
       >
         <HeroArrowRightStartOnRectangle className="w-4 h-4 shrink-0" />
         <span>Logout</span>

@@ -7,7 +7,6 @@ import {
   HeroCurrencyDollar,
   HeroClipboardDocumentList,
   HeroCheckCircle,
-  HeroBuildingOffice,
   HeroUsers,
   HeroShieldCheck,
   HeroClock,
@@ -35,8 +34,8 @@ export const ALL_NAVIGATION_MODULES: NavigationModule[] = [
   // 1. Ekosistem Organisasi (Operasional Harian)
   {
     id: 'structures',
-    label: 'Struktur',
-    name: 'Struktur & Seksi',
+    label: 'Jabatan',
+    name: 'Jabatan',
     href: '/structures',
     icon: HeroSquares2X2,
     color: 'text-primary-600 dark:text-primary-400',
@@ -50,8 +49,6 @@ export const ALL_NAVIGATION_MODULES: NavigationModule[] = [
     icon: HeroBriefcase,
     color: 'text-primary-600 dark:text-primary-400',
     group: 'organisasi',
-    defaultBadge: '3',
-    badgeColor: 'primary',
   },
   {
     id: 'agendas',
@@ -88,8 +85,6 @@ export const ALL_NAVIGATION_MODULES: NavigationModule[] = [
     icon: HeroClipboardDocumentList,
     color: 'text-rose-600 dark:text-rose-400',
     group: 'organisasi',
-    defaultBadge: '1',
-    badgeColor: 'danger',
   },
   {
     id: 'tasks',
@@ -102,18 +97,6 @@ export const ALL_NAVIGATION_MODULES: NavigationModule[] = [
   },
 
   // 2. Tata Kelola Sistem (Superadmin)
-  {
-    id: 'organizations',
-    label: 'Organisasi',
-    name: 'Organisasi',
-    href: '/organizations',
-    icon: HeroBuildingOffice,
-    color: 'text-primary-600 dark:text-primary-400',
-    group: 'sistem',
-    requiresSuperAdmin: true,
-    defaultBadge: '3',
-    badgeColor: 'primary',
-  },
   {
     id: 'accounts',
     label: 'Akun',

@@ -32,12 +32,15 @@ export const AgendaListPage: React.FC = () => {
   const { confirm } = useConfirm()
 
   const [agendas, setAgendas] = useState<Agenda[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  const [isLoading, setIsLoading] = useState(false)
 
   const orgId = currentOrganization?.id || ''
 
   const loadData = useCallback(async () => {
-    if (!orgId) return
+    if (!orgId) {
+      setIsLoading(false)
+      return
+    }
     setIsLoading(true)
     try {
       const agds = await dataService.getAgendas(
@@ -87,6 +90,26 @@ export const AgendaListPage: React.FC = () => {
     }
   }
 
+  const handleBulkDelete = async (ids: string[]) => {
+    if (ids.length === 0) return
+    const ok = await confirm({
+      title: 'Hapus Agenda Terpilih',
+      message: `Yakin ingin menghapus ${ids.length} agenda terpilih? Tindakan ini tidak dapat dibatalkan.`,
+      tone: 'danger',
+      confirmLabel: `Hapus ${ids.length} Agenda`,
+    })
+    if (!ok) return
+    try {
+      const result = await dataService.bulkDeleteAgendas(ids, user)
+      if (result.deleted > 0) success('Agenda Dihapus', `${result.deleted} agenda berhasil dihapus.`)
+      if (result.denied.length > 0) error('Sebagian Gagal', `${result.denied.length} agenda tidak dapat dihapus (tidak ada izin).`)
+      loadData()
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Gagal menghapus agenda'
+      error('Gagal', msg)
+    }
+  }
+
   const getStatusBadge = (status: AgendaStatus) => {
     const config: Record<AgendaStatus, { variant: 'gray' | 'primary' | 'success' | 'warning' | 'danger'; label: string }> = {
       planned: { variant: 'gray', label: 'Direncanakan' },
@@ -103,7 +126,7 @@ export const AgendaListPage: React.FC = () => {
   const columns: ColumnDef<Agenda>[] = [
     {
       key: 'title',
-      label: 'Nama Agenda & Waktu',
+      label: 'Agenda',
       sortable: true,
       mobilePriority: 'primary',
       render: (a) => (
@@ -131,7 +154,7 @@ export const AgendaListPage: React.FC = () => {
     },
     {
       key: 'program_id',
-      label: 'Induk Program & Seksi',
+      label: 'Program',
       mobilePriority: 'secondary',
       render: (a) => (
         <div>
@@ -155,14 +178,14 @@ export const AgendaListPage: React.FC = () => {
     },
     {
       key: 'status',
-      label: 'Status Pelaksanaan',
+      label: 'Status',
       sortable: true,
       mobilePriority: 'status',
       render: (a) => getStatusBadge(a.status),
     },
     {
       key: 'id',
-      label: 'Langkah Operasional',
+      label: 'Aksi',
       mobilePriority: 'detail',
       render: (a) => (
         <div className="flex items-center gap-1.5">
@@ -343,7 +366,7 @@ export const AgendaListPage: React.FC = () => {
         <div className="flex items-center gap-2.5 flex-wrap">
           <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-fg flex items-center gap-2.5">
             <HeroCalendar className="w-7 h-7 text-amber-500" />
-            Agenda Kegiatan
+            Agenda
           </h1>
           <OrganizationScopeBadge />
         </div>
@@ -356,7 +379,7 @@ export const AgendaListPage: React.FC = () => {
             className="shrink-0 self-start sm:self-auto"
           >
             <HeroPlus className="w-4 h-4 mr-2" />
-            Tambah Agenda
+            Tambah
           </Button>
         </div>
       </div>
@@ -370,6 +393,7 @@ export const AgendaListPage: React.FC = () => {
         searchKey="title"
         onEdit={(agenda) => navigate(`/agendas/${agenda.id}/edit`)}
         onDelete={handleDelete}
+        onBulkDelete={handleBulkDelete}
         renderCard={renderAgendaCard}
       />
     </PageContainer>

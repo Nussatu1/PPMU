@@ -79,16 +79,16 @@ async function runStage9Tests() {
     const ORG_CHILD_A1 = 'org-11111111-1111-1111-1111-1111111111a1'; // Ubudiyah Baru (Descendant)
 
     // -------------------------------------------------------------
-    // TEST 1: Account A initial seed
+    // TEST 1: Account A starts empty (Demo data reset from 0)
     // -------------------------------------------------------------
     const t1 = await page.evaluate(async (accA, orgRoot) => {
       window.dataService.setActiveAccount(accA);
-      // Query initial seeded programs for root with descendants
+      // Query initial programs for root with descendants: must be 0 (completely empty)
       const programs = await window.dataService.getPrograms({ organizationId: orgRoot, mode: 'descendants' });
       const rawStored = localStorage.getItem(`filament_demo_v3_${accA}_programs`);
       return { count: programs.length, hasStorage: rawStored !== null };
     }, ACCOUNT_A_ID, ORG_ROOT);
-    record(1, 'Account A initial seed', t1.count > 0 && t1.hasStorage, `Seeded count=${t1.count}, localStorage key exists=${t1.hasStorage}`);
+    record(1, 'Account A starts empty', t1.count === 0 && t1.hasStorage, `Operational count=${t1.count} (0 expected), localStorage key exists=${t1.hasStorage}`);
 
     // -------------------------------------------------------------
     // TEST 2: Account A create
@@ -106,6 +106,9 @@ async function runStage9Tests() {
         organization_id: orgRoot,
         name: title,
         title: title,
+        duration_type: 'terbatas',
+        start_date: '2026-01-01',
+        end_date: '2026-12-31',
         status: 'draft',
         budget_allocated: 50000000,
         budget_planned: 50000000,
@@ -232,6 +235,9 @@ async function runStage9Tests() {
         organization_id: orgA,
         name: title,
         title: title,
+        duration_type: 'terbatas',
+        start_date: '2026-01-01',
+        end_date: '2026-12-31',
         status: 'draft',
         budget_allocated: 20000000,
         budget_planned: 20000000,

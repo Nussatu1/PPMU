@@ -23,10 +23,10 @@ interface OrganizationTreeViewProps {
   memberships: OrganizationMembership[]
   currentOrganization: Organization | null
   onSwitchOrganization: (orgId: string) => void
-  onEdit: (org: Organization) => void
-  onDelete: (org: Organization) => void
-  onCreateChild: (parentOrgId: string) => void
-  onPreviewMembers: (org: Organization) => void
+  onEdit?: (org: Organization) => void
+  onDelete?: (org: Organization) => void
+  onCreateChild?: (parentOrgId: string) => void
+  onPreviewMembers?: (org: Organization) => void
 }
 
 export const OrganizationTreeView: React.FC<OrganizationTreeViewProps> = ({
@@ -75,19 +75,36 @@ export const OrganizationTreeView: React.FC<OrganizationTreeViewProps> = ({
   }
 
   const getUnitTypeBadge = (unitType?: string) => {
-    switch (unitType) {
+    const t = (unitType || '').toLowerCase()
+    switch (t) {
+      case 'kepala_pengurus':
       case 'pimpinan':
         return (
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-purple-500/10 text-purple-700 dark:text-purple-300 ring-1 ring-purple-500/20 uppercase tracking-wider">
             <HeroShieldCheck className="w-3 h-3" />
-            Pimpinan
+            {t === 'kepala_pengurus' ? 'Kepala Pengurus' : 'Pimpinan'}
           </span>
         )
+      case 'waka':
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 ring-1 ring-indigo-500/20 uppercase tracking-wider">
+            <HeroShieldCheck className="w-3 h-3" />
+            Waka
+          </span>
+        )
+      case 'seksi':
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-500/20 uppercase tracking-wider">
+            <HeroSquares2X2 className="w-3 h-3" />
+            Seksi
+          </span>
+        )
+      case 'organisasi':
       case 'lembaga':
         return (
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-500/10 text-blue-700 dark:text-blue-300 ring-1 ring-blue-500/20 uppercase tracking-wider">
             <HeroBuildingOffice className="w-3 h-3" />
-            Lembaga
+            {t === 'organisasi' ? 'Jabatan' : 'Lembaga'}
           </span>
         )
       case 'kelompok':
@@ -146,7 +163,7 @@ export const OrganizationTreeView: React.FC<OrganizationTreeViewProps> = ({
                 : 'border-line shadow-2xs'
             )}
             style={{
-              marginLeft: `${Math.min(depth * 24, 96)}px`,
+              marginLeft: `min(${Math.min(depth * 24, 96)}px, ${depth * 3.2}vw)`,
             }}
           >
             {/* Visual connector line for child nodes */}
@@ -191,9 +208,13 @@ export const OrganizationTreeView: React.FC<OrganizationTreeViewProps> = ({
                     <div
                       className={cn(
                         'w-10 h-10 rounded-xl flex items-center justify-center font-bold text-xs ring-1 shadow-2xs',
-                        node.unit_type === 'pimpinan'
+                        node.unit_type === 'kepala_pengurus' || node.unit_type === 'pimpinan'
                           ? 'bg-purple-500/10 text-purple-700 dark:text-purple-300 ring-purple-500/20'
-                          : node.unit_type === 'lembaga'
+                          : node.unit_type === 'waka'
+                          ? 'bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 ring-indigo-500/20'
+                          : node.unit_type === 'seksi'
+                          ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 ring-emerald-500/20'
+                          : node.unit_type === 'organisasi' || node.unit_type === 'lembaga'
                           ? 'bg-blue-500/10 text-blue-700 dark:text-blue-300 ring-blue-500/20'
                           : 'bg-amber-500/10 text-amber-700 dark:text-amber-300 ring-amber-500/20'
                       )}
@@ -206,7 +227,14 @@ export const OrganizationTreeView: React.FC<OrganizationTreeViewProps> = ({
                 {/* Name, Badges & Details */}
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <h4 className="font-semibold text-fg text-sm sm:text-base tracking-tight truncate">
+                    <h4
+                      onClick={() => !isCurrent && onSwitchOrganization(node.id)}
+                      className={cn(
+                        "font-semibold text-fg text-sm sm:text-base tracking-tight truncate",
+                        !isCurrent && "cursor-pointer hover:text-amber-600 dark:hover:text-amber-400 transition-colors"
+                      )}
+                      title={!isCurrent ? "Klik untuk mengaktifkan unit organisasi ini" : undefined}
+                    >
                       {node.name}
                     </h4>
 
@@ -235,14 +263,21 @@ export const OrganizationTreeView: React.FC<OrganizationTreeViewProps> = ({
                   <div className="flex items-center gap-3 mt-1 text-xs text-fg-muted flex-wrap">
                     <span className="font-mono text-[11px] text-fg-muted/80">{node.code}</span>
                     <span>•</span>
-                    <button
-                      type="button"
-                      onClick={() => onPreviewMembers(node)}
-                      className="inline-flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400 hover:underline cursor-pointer"
-                    >
-                      <HeroUsers className="w-3.5 h-3.5" />
-                      <span>{orgMembers.length} Anggota</span>
-                    </button>
+                    {onPreviewMembers ? (
+                      <button
+                        type="button"
+                        onClick={() => onPreviewMembers(node)}
+                        className="inline-flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400 hover:underline cursor-pointer"
+                      >
+                        <HeroUsers className="w-3.5 h-3.5" />
+                        <span>{orgMembers.length} Anggota</span>
+                      </button>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-xs text-fg-muted">
+                        <HeroUsers className="w-3.5 h-3.5" />
+                        <span>{orgMembers.length} Anggota</span>
+                      </span>
+                    )}
                     {hasChildren && (
                       <>
                         <span>•</span>
@@ -264,46 +299,52 @@ export const OrganizationTreeView: React.FC<OrganizationTreeViewProps> = ({
                     size="sm"
                     onClick={() => onSwitchOrganization(node.id)}
                     className="text-xs shrink-0"
-                    title="Jadikan unit organisasi aktif saat ini"
+                    title="Jadikan jabatan aktif saat ini"
                   >
                     Pilih Unit
                   </Button>
                 )}
 
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => onCreateChild(node.id)}
-                  className="text-xs shrink-0"
-                  title="Tambah sub-unit di bawah organisasi ini"
-                >
-                  <HeroPlus className="w-3.5 h-3.5 mr-1" />
-                  Sub-Unit
-                </Button>
+                {onCreateChild && (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => onCreateChild(node.id)}
+                    className="text-xs shrink-0"
+                    title="Tambah sub-posisi di bawah jabatan ini"
+                  >
+                    <HeroPlus className="w-3.5 h-3.5 mr-1" />
+                    Sub-Unit
+                  </Button>
+                )}
 
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => onEdit(node)}
-                  className="text-xs shrink-0"
-                  aria-label="Ubah Organisasi"
-                >
-                  <HeroPencilSquare className="w-3.5 h-3.5 mr-1 sm:mr-0 lg:mr-1" />
-                  <span className="hidden sm:inline lg:inline">Ubah</span>
-                </Button>
+                {onEdit && (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => onEdit(node)}
+                    className="text-xs shrink-0"
+                    aria-label="Ubah Jabatan"
+                  >
+                    <HeroPencilSquare className="w-3.5 h-3.5 mr-1 sm:mr-0 lg:mr-1" />
+                    <span className="hidden sm:inline lg:inline">Ubah</span>
+                  </Button>
+                )}
 
-                <Button
-                  type="button"
-                  variant="danger"
-                  size="sm"
-                  onClick={() => onDelete(node)}
-                  className="text-xs shrink-0"
-                  aria-label="Hapus Organisasi"
-                >
-                  <HeroTrash className="w-3.5 h-3.5" />
-                </Button>
+                {onDelete && (
+                  <Button
+                    type="button"
+                    variant="danger"
+                    size="sm"
+                    onClick={() => onDelete(node)}
+                    className="text-xs shrink-0"
+                    aria-label="Hapus Jabatan"
+                  >
+                    <HeroTrash className="w-3.5 h-3.5" />
+                  </Button>
+                )}
               </div>
             </div>
           </div>
@@ -351,8 +392,28 @@ export const OrganizationTreeView: React.FC<OrganizationTreeViewProps> = ({
       {/* Tree Node Container */}
       <div className="space-y-2">
         {organizationTree.length === 0 ? (
-          <div className="p-8 text-center rounded-2xl border border-line bg-surface text-fg-muted text-sm italic">
-            Belum ada organisasi yang terdaftar.
+          <div className="p-12 text-center rounded-2xl border-2 border-dashed border-line bg-surface space-y-3">
+            <div className="w-12 h-12 mx-auto rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center">
+              <HeroBuildingOffice className="w-6 h-6" />
+            </div>
+            <div className="space-y-1">
+              <h3 className="text-sm sm:text-base font-bold text-fg">Belum Ada Jabatan</h3>
+              <p className="text-xs text-fg-muted max-w-sm mx-auto">
+                Belum ada jabatan atau posisi yang terdaftar. Tambahkan posisi jabatan pertama untuk memulai hierarki.
+              </p>
+            </div>
+            {onCreateChild && (
+              <Button
+                type="button"
+                variant="primary"
+                size="sm"
+                onClick={() => onCreateChild('')}
+                className="mt-2 text-xs"
+              >
+                <HeroPlus className="w-4 h-4 mr-1.5" />
+                Tambah Jabatan
+              </Button>
+            )}
           </div>
         ) : (
           organizationTree.map((rootNode) => renderNode(rootNode))

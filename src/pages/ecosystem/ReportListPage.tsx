@@ -10,6 +10,7 @@ import {
   OrganizationScopeSwitcher,
 } from '@/components/organization'
 import { useToast } from '@/context/ToastContext'
+import { useConfirm } from '@/context/ConfirmContext'
 import { useAuth } from '@/context/AuthContext'
 import { dataService } from '@/lib/dataService'
 import { formatCurrency } from '@/lib/utils'
@@ -33,9 +34,10 @@ export const ReportListPage: React.FC = () => {
   const navigate = useNavigate()
   const { user, currentOrganization, currentScopeMode } = useAuth()
   const { success, error } = useToast()
+  const { confirm } = useConfirm()
 
   const [reports, setReports] = useState<Report[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  const [isLoading, setIsLoading] = useState(false)
 
   // Review Dialog State
   const [reviewingReport, setReviewingReport] = useState<Report | null>(null)
@@ -44,7 +46,10 @@ export const ReportListPage: React.FC = () => {
   const orgId = currentOrganization?.id || ''
 
   const loadData = useCallback(async () => {
-    if (!orgId) return
+    if (!orgId) {
+      setIsLoading(false)
+      return
+    }
     setIsLoading(true)
     try {
       const reps = await dataService.getReports(
@@ -100,6 +105,32 @@ export const ReportListPage: React.FC = () => {
     }
   }
 
+  const handleBulkDelete = async (ids: string[]) => {
+    if (ids.length === 0) return
+    // Count how many are actually eligible (draft/revised) for user-facing info
+    const eligible = reports.filter((r) => ids.includes(r.id) && (r.status === 'draft' || r.status === 'revised'))
+    const protectedCount = ids.length - eligible.length
+    const ok = await confirm({
+      title: 'Hapus Laporan Terpilih',
+      message: eligible.length === 0
+        ? `Tidak ada laporan yang dapat dihapus. Hanya laporan berstatus Konsep atau Perlu Revisi yang dapat dihapus secara massal.`
+        : `Yakin ingin menghapus ${eligible.length} laporan berstatus Konsep/Revisi?${protectedCount > 0 ? ` (${protectedCount} laporan diproteksi dan tidak akan dihapus.)` : ''} Tindakan ini tidak dapat dibatalkan.`,
+      tone: 'danger',
+      confirmLabel: eligible.length > 0 ? `Hapus ${eligible.length} Laporan` : 'Tutup',
+    })
+    if (!ok || eligible.length === 0) return
+    try {
+      const result = await dataService.bulkDeleteReports(ids, user)
+      if (result.deleted > 0) success('Laporan Dihapus', `${result.deleted} laporan berhasil dihapus.`)
+      if (result.protected.length > 0) error('Laporan Diproteksi', `${result.protected.length} laporan tidak dapat dihapus (status aktif/disetujui).`)
+      if (result.denied.length > 0) error('Akses Ditolak', `${result.denied.length} laporan tidak dapat dihapus karena tidak ada izin.`)
+      loadData()
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Gagal menghapus laporan'
+      error('Gagal', msg)
+    }
+  }
+
   const getStatusBadge = (status: ReportStatus) => {
     const config: Record<ReportStatus, { variant: 'gray' | 'primary' | 'success' | 'warning' | 'danger'; label: string }> = {
       draft: { variant: 'gray', label: 'Konsep' },
@@ -116,7 +147,7 @@ export const ReportListPage: React.FC = () => {
   const columns: ColumnDef<Report>[] = [
     {
       key: 'title',
-      label: 'Judul Laporan & Program',
+      label: 'Laporan',
       sortable: true,
       render: (r) => (
         <div className="flex items-start gap-3">
@@ -129,7 +160,7 @@ export const ReportListPage: React.FC = () => {
               {r.program?.title || 'Program Umum'}
             </p>
             <p className="text-[11px] text-fg-muted mt-0.5">
-              Penyusun: {getAuthorName(r.author)} • Periode: {r.period}
+              {getAuthorName(r.author)} • {r.period}
             </p>
           </div>
         </div>
@@ -137,7 +168,7 @@ export const ReportListPage: React.FC = () => {
     },
     {
       key: 'budget_spent',
-      label: 'Realisasi Dana',
+      label: 'Realisasi',
       sortable: true,
       render: (r) => (
         <span className="font-semibold text-xs text-fg">
@@ -215,7 +246,7 @@ export const ReportListPage: React.FC = () => {
         <div className="flex items-center gap-2.5 flex-wrap">
           <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-fg flex items-center gap-2.5">
             <HeroClipboardDocumentList className="w-7 h-7 text-amber-500" />
-            Laporan Kinerja
+            Laporan
           </h1>
           <OrganizationScopeBadge />
         </div>
@@ -224,7 +255,7 @@ export const ReportListPage: React.FC = () => {
           <OrganizationScopeSwitcher size="sm" />
           <Button variant="primary" onClick={() => navigate('/reports/create')} className="shrink-0 self-start sm:self-auto">
             <HeroPlus className="w-4 h-4 mr-2" />
-            Buat Laporan
+            Buat
           </Button>
         </div>
       </div>
@@ -236,6 +267,7 @@ export const ReportListPage: React.FC = () => {
         isLoading={isLoading}
         searchPlaceholder="Cari laporan..."
         searchKey="title"
+        onBulkDelete={handleBulkDelete}
         renderCard={(r) => {
           let primaryActionNode: React.ReactNode = null
           if (r.status === 'draft') {
@@ -352,24 +384,24 @@ export const ReportListPage: React.FC = () => {
               </div>
 
               <div>
-                <strong className="block text-fg font-semibold mb-1 text-xs">
-                  Isi & Uraian Laporan:
+                <strong className="block text-fg font-semibold mb-1.5 text-xs">
+                  Uraian Laporan
                 </strong>
-                <div className="p-3.5 rounded-xl bg-surface border border-line text-fg leading-relaxed whitespace-pre-line text-xs">
+                <div className="p-4 rounded-xl bg-surface border border-line text-fg leading-relaxed whitespace-pre-line text-xs max-h-48 overflow-y-auto">
                   {reviewingReport.content}
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-fg mb-1">
-                  Catatan Evaluasi / Rekomendasi Pimpinan:
+                <label className="block text-xs font-semibold text-fg mb-1.5">
+                  Catatan Evaluasi
                 </label>
                 <textarea
                   rows={3}
                   value={reviewNotes}
                   onChange={(e) => setReviewNotes(e.target.value)}
-                  placeholder="Catatan evaluasi"
-                  className="w-full rounded-lg border border-line-strong bg-input-bg px-3 py-2 text-xs text-fg focus:outline-none focus:ring-2 focus:ring-amber-500/20 resize-y"
+                  placeholder="Masukkan catatan evaluasi atau arahan perbaikan..."
+                  className="w-full rounded-xl border border-line-strong bg-input-bg px-3.5 py-2.5 text-xs text-fg focus:outline-none focus:ring-2 focus:ring-amber-500/20 resize-y"
                 />
               </div>
             </div>

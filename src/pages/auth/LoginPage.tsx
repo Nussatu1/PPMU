@@ -7,7 +7,6 @@ import {
   HeroEyeSlash,
   HeroExclamationCircle,
   HeroShieldCheck,
-  HeroUser,
   HeroKey,
 } from '@/components/icons/HeroIcons'
 import { Checkbox } from '@/components/ui/Checkbox'
@@ -54,8 +53,8 @@ const FilamentMark: React.FC = () => (
 )
 
 export const LoginPage: React.FC = () => {
-  const [email, setEmail] = useState('pengurus1@bakid.ponpes.id')
-  const [password, setPassword] = useState('superadmin123')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [errorMsg, setErrorMsg] = useState('')
@@ -168,7 +167,7 @@ export const LoginPage: React.FC = () => {
                 htmlFor="email"
                 className="block text-sm font-medium leading-6 text-fg"
               >
-                Email atau Username <span className="text-red-600 dark:text-red-400">*</span>
+                Email / Akun <span className="text-red-600 dark:text-red-400">*</span>
               </label>
               <div className="flex items-center rounded-lg bg-input-bg shadow-sm ring-1 ring-line-strong transition duration-75 focus-within:ring-2 focus-within:ring-primary-600 dark:focus-within:ring-primary-500 relative">
                 <div className="pointer-events-none pl-3 flex items-center text-fg-muted shrink-0">
@@ -181,7 +180,7 @@ export const LoginPage: React.FC = () => {
                   autoComplete="username"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="pengurus1@bakid.ponpes.id atau username"
+                  placeholder="Email atau username"
                   className="w-full bg-transparent pl-2.5 pr-3 py-2 text-base text-fg outline-none placeholder:text-fg-subtle sm:text-sm sm:leading-6"
                 />
               </div>
@@ -194,14 +193,14 @@ export const LoginPage: React.FC = () => {
                   htmlFor="password"
                   className="block text-sm font-medium leading-6 text-fg"
                 >
-                  {t.auth.password} <span className="text-red-600 dark:text-red-400">*</span>
+                  Sandi <span className="text-red-600 dark:text-red-400">*</span>
                 </label>
                 <button
                   type="button"
                   className="text-xs text-primary-600 dark:text-primary-400 hover:underline font-medium cursor-pointer"
                   tabIndex={-1}
                 >
-                  Lupa kata sandi?
+                  Lupa sandi?
                 </button>
               </div>
               <div className="flex items-center rounded-lg bg-input-bg shadow-sm ring-1 ring-line-strong transition duration-75 focus-within:ring-2 focus-within:ring-primary-600 dark:focus-within:ring-primary-500 relative">
@@ -215,7 +214,7 @@ export const LoginPage: React.FC = () => {
                   autoComplete="current-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder={t.auth.passwordPlaceholder}
+                  placeholder="Kata sandi"
                   className="w-full bg-transparent pl-2.5 pr-10 py-2 text-base text-fg outline-none placeholder:text-fg-subtle sm:text-sm sm:leading-6"
                 />
                 <button
@@ -234,7 +233,7 @@ export const LoginPage: React.FC = () => {
               <Checkbox
                 id="remember"
                 defaultChecked
-                label={<span className="text-sm text-fg-muted">{t.auth.rememberMe}</span>}
+                label={<span className="text-sm text-fg-muted">Ingat Saya</span>}
               />
             </div>
 
@@ -248,61 +247,37 @@ export const LoginPage: React.FC = () => {
                 <>
                   <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                    />
                   </svg>
-                  <span>{t.auth.signingIn}</span>
+                  <span>Masuk...</span>
                 </>
               ) : (
-                <span>{t.auth.signInButton}</span>
+                'Masuk'
               )}
             </button>
           </form>
 
-          {/* QUICK LOGIN (DEMO - DEV ONLY) */}
+          {/* QUICK LOGIN (AKSES CEPAT AKUN) */}
           {import.meta.env.DEV && (
             <div className="mt-8 pt-6 border-t border-line">
               <p className="text-xs font-semibold text-fg-muted uppercase tracking-wider mb-2.5 text-center">
-                Demo Akses Cepat (PP. Miftahul Ulum BAKID)
+                Akses Cepat Superadmin Master
               </p>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <div className="flex justify-center">
                 <button
                   type="button"
                   onClick={() => fillQuickLogin('pengurus1@bakid.ponpes.id', 'superadmin123')}
-                  className="flex flex-col items-center p-2 rounded-lg border border-line bg-surface-muted hover:bg-hover-bg transition cursor-pointer text-center group"
+                  className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10 hover:bg-amber-500/20 transition cursor-pointer text-center group"
                 >
-                  <HeroShieldCheck className="w-4 h-4 text-amber-500 mb-1" />
-                  <span className="text-xs font-bold text-fg group-hover:text-amber-500">Pengurus 1</span>
-                  <span className="text-xs text-fg-muted truncate w-full">Superadmin Harian</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => fillQuickLogin('ubudiyah@bakid.ponpes.id', 'password')}
-                  className="flex flex-col items-center p-2 rounded-lg border border-line bg-surface-muted hover:bg-hover-bg transition cursor-pointer text-center group"
-                >
-                  <HeroUser className="w-4 h-4 text-emerald-500 mb-1" />
-                  <span className="text-xs font-bold text-fg group-hover:text-emerald-500">Ubudiyah</span>
-                  <span className="text-xs text-fg-muted truncate w-full">Ust. M. Ridwan</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => fillQuickLogin('multimedia@bakid.ponpes.id', 'password')}
-                  className="flex flex-col items-center p-2 rounded-lg border border-line bg-surface-muted hover:bg-hover-bg transition cursor-pointer text-center group"
-                >
-                  <HeroUser className="w-4 h-4 text-blue-500 mb-1" />
-                  <span className="text-xs font-bold text-fg group-hover:text-blue-500">Multimedia</span>
-                  <span className="text-xs text-fg-muted truncate w-full">Ahmad Zainullah</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => fillQuickLogin('jamub@bakid.ponpes.id', 'password')}
-                  className="flex flex-col items-center p-2 rounded-lg border border-line bg-surface-muted hover:bg-hover-bg transition cursor-pointer text-center group"
-                >
-                  <HeroUser className="w-4 h-4 text-purple-500 mb-1" />
-                  <span className="text-xs font-bold text-fg group-hover:text-purple-500">JAMUB</span>
-                  <span className="text-xs text-fg-muted truncate w-full">Ust. Fahrur Rozi</span>
+                  <HeroShieldCheck className="w-5 h-5 text-amber-500 shrink-0" />
+                  <div className="text-left">
+                    <span className="text-xs font-bold text-fg group-hover:text-amber-500 block">Pengurus 1 (Superadmin)</span>
+                    <span className="text-[11px] text-fg-muted block">pengurus1@bakid.ponpes.id / superadmin123</span>
+                  </div>
                 </button>
               </div>
             </div>

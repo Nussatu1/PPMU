@@ -10,109 +10,145 @@ import { useToast } from '@/context/ToastContext'
 import { useConfirm } from '@/context/ConfirmContext'
 import { useAuth } from '@/context/AuthContext'
 import { dataService } from '@/lib/dataService'
-import type { Structure, Section, Personnel, OrganizationPeriod } from '@/types/database'
+import type {
+  Organization,
+  OrganizationStatus,
+  OrganizationMembership,
+  OrganizationUnitType,
+  Section,
+  Personnel,
+  OrganizationPeriod,
+} from '@/types/database'
+import { OrganizationTreeView } from '@/components/organization/OrganizationTreeView'
 import { OrganizationTree } from '@/components/structure/OrganizationTree'
 import { StructureDetailModal } from '@/components/structure/StructureDetailModal'
-import { HierarchyDeleteModal } from '@/components/structure/HierarchyDeleteModal'
 import { StructureExportModal } from '@/components/structure/StructureExportModal'
+import { getOrganizationTree, getDescendantOrganizationIds, type OrganizationTreeNode } from '@/lib/hierarchyService'
 import {
   HeroSquares2X2,
-  HeroPlus,
   HeroUsers,
   HeroFolder,
   HeroCheck,
-  HeroPencilSquare,
-  HeroTrash,
   HeroEye,
   HeroArrowsRightLeft,
-  HeroCalendar,
   HeroArrowDownTray,
+  HeroBuildingOffice,
+  HeroPlus,
 } from '@/components/icons/HeroIcons'
+import { cn } from '@/lib/utils'
 
-/**
- * Returns all descendant IDs of a given personnel ID to prevent cyclic hierarchy loops.
- */
-function getDescendantIds(targetId: string, allPersonnels: Personnel[]): Set<string> {
-  const descendants = new Set<string>()
-  const queue = [targetId]
-
-  while (queue.length > 0) {
-    const current = queue.shift()!
-    const children = allPersonnels.filter((p) => p.parent_id === current)
-    for (const child of children) {
-      if (!descendants.has(child.id)) {
-        descendants.add(child.id)
-        queue.push(child.id)
-      }
-    }
-  }
-
-  return descendants
-}
 
 export const StructurePage: React.FC = () => {
-  const { user, currentOrganization } = useAuth()
+  const { user, currentOrganization, switchOrganization, refreshOrganizations } = useAuth()
   const { success, error } = useToast()
   const { confirm } = useConfirm()
 
+  // Canonical Macro Organization Hierarchy State
+  const [organizations, setOrganizations] = useState<Organization[]>([])
+  const [memberships, setMemberships] = useState<OrganizationMembership[]>([])
+  const [isLoadingOrgs, setIsLoadingOrgs] = useState(false)
+
+  // Internal Micro Structure State (per currentOrganization)
   const [periods, setPeriods] = useState<OrganizationPeriod[]>([])
   const [selectedPeriodId, setSelectedPeriodId] = useState<string>('')
-  const [structures, setStructures] = useState<Structure[]>([])
   const [sections, setSections] = useState<Section[]>([])
   const [personnels, setPersonnels] = useState<Personnel[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  const [isLoadingInternal, setIsLoadingInternal] = useState(false)
 
-  // View Mode: Interactive Tree / Mind-Map (default) vs Cards
-  const [viewMode, setViewMode] = useState<'tree' | 'cards'>('tree')
+  // View Mode:
+  // - 'org_tree': Canonical Macro Organization Hierarchy (Single Source of Truth)
+  // - 'tree': Internal Personnel Mind-Map / Chart for currentOrganization
+  // - 'cards': Internal Section & Personnel Cards for currentOrganization
+  const [viewMode, setViewMode] = useState<'org_tree' | 'tree' | 'cards'>('org_tree')
 
-  // Detail Modal State
+  // Organization Create / Edit Modal State
+  const [isOrgModalOpen, setIsOrgModalOpen] = useState(false)
+  const [editingOrg, setEditingOrg] = useState<Organization | null>(null)
+  const [orgForm, setOrgForm] = useState<{
+    name: string
+    short_name: string
+    code: string
+    description: string
+    status: OrganizationStatus
+    period_active: string
+    email: string
+    phone: string
+    address: string
+    parent_id: string | null
+    unit_type: OrganizationUnitType
+  }>({
+    name: '',
+    short_name: '',
+    code: '',
+    description: '',
+    status: 'active',
+    period_active: '2024 - 2026',
+    email: '',
+    phone: '',
+    address: '',
+    parent_id: null,
+    unit_type: 'organisasi',
+  })
+
+  // Preview Organization Members Modal State
+  const [previewMembersOrg, setPreviewMembersOrg] = useState<Organization | null>(null)
+
+  // Detail Modal State (Internal Personnel)
   const [selectedPersonnel, setSelectedPersonnel] = useState<Personnel | null>(null)
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false)
 
-  // Hierarchy Delete Modal State
-  const [deletingPersonnel, setDeletingPersonnel] = useState<Personnel | null>(null)
-  const [isHierarchyDeleteOpen, setIsHierarchyDeleteOpen] = useState(false)
-
-  // Export Modal State
+  // Export Modal State (Internal Structure)
   const [isExportModalOpen, setIsExportModalOpen] = useState(false)
-
-  // Section Modal State
-  const [isSectionModalOpen, setIsSectionModalOpen] = useState(false)
-  const [editingSection, setEditingSection] = useState<Section | null>(null)
-  const [secForm, setSecForm] = useState({
-    name: '',
-    code: '',
-    description: '',
-  })
-
-  // Personnel Modal State (Preserves existing form fields + adds Parent selection)
-  const [isPersonModalOpen, setIsPersonModalOpen] = useState(false)
-  const [editingPersonnel, setEditingPersonnel] = useState<Personnel | null>(null)
-  const [prsForm, setPrsForm] = useState({
-    name: '',
-    position: '',
-    section_id: '',
-    parent_id: '',
-    tupoksi: '',
-    authority: '',
-    responsibility: '',
-    email: '',
-    phone: '',
-  })
 
   const orgId = currentOrganization?.id || ''
 
-  const loadData = useCallback(async () => {
-    if (!orgId) return
-    setIsLoading(true)
+  // 1. Fetch Canonical Organizations and Memberships
+  const loadOrganizations = useCallback(async () => {
+    setIsLoadingOrgs(true)
     try {
-      const [structs, secs, prss, prds] = await Promise.all([
+      dataService.reloadSharedStructural()
+      const [allOrgs, allMemberships] = await Promise.all([
+        dataService.getOrganizations(user),
+        dataService.getMemberships(undefined, user),
+      ])
+      setOrganizations(allOrgs)
+      setMemberships(allMemberships)
+
+      // Jika currentOrganization belum ada atau tidak ada di list, otomatis beralih ke organisasi pertama
+      if (allOrgs.length > 0 && (!currentOrganization || !allOrgs.some((o) => o.id === currentOrganization.id))) {
+        const savedOrgId = typeof sessionStorage !== 'undefined'
+          ? sessionStorage.getItem('filament_bakid_active_org_id')
+          : null
+        const targetOrg = allOrgs.find((o) => o.id === savedOrgId) || allOrgs[0]
+        if (targetOrg) {
+          switchOrganization(targetOrg.id)
+        }
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Gagal memuat struktur hierarki organisasi'
+      error('Kesalahan', msg)
+    } finally {
+      setIsLoadingOrgs(false)
+    }
+  }, [user, error, currentOrganization, switchOrganization])
+
+  // 2. Fetch Internal Structure (Structure, Section, Personnel) for Current Organization
+  const loadInternalData = useCallback(async () => {
+    if (!orgId) {
+      setSections([])
+      setPersonnels([])
+      setPeriods([])
+      setIsLoadingInternal(false)
+      return
+    }
+    setIsLoadingInternal(true)
+    try {
+      const [, secs, prss, prds] = await Promise.all([
         dataService.getStructures(orgId, user),
         dataService.getSections(orgId, undefined, user),
         dataService.getPersonnels(orgId, undefined, user),
         dataService.getPeriods(orgId, user),
       ])
-      setStructures(structs)
       setSections(secs)
       setPersonnels(prss)
       setPeriods(prds)
@@ -122,186 +158,218 @@ export const StructurePage: React.FC = () => {
         setSelectedPeriodId(activePrd.id)
       }
 
-      // If a node was selected, update its reference
       setSelectedPersonnel((prev) => (prev ? prss.find((p) => p.id === prev.id) || null : null))
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Gagal memuat struktur'
+      const msg = err instanceof Error ? err.message : 'Gagal memuat struktur internal'
       error('Kesalahan', msg)
     } finally {
-      setIsLoading(false)
+      setIsLoadingInternal(false)
     }
   }, [orgId, user, error, selectedPeriodId])
 
+  // Initial load
   useEffect(() => {
-    loadData()
-  }, [loadData])
+    loadOrganizations()
+  }, [loadOrganizations])
 
-  // Section actions
-  const openCreateSection = () => {
-    setEditingSection(null)
-    setSecForm({ name: '', code: '', description: '' })
-    setIsSectionModalOpen(true)
+  useEffect(() => {
+    loadInternalData()
+  }, [loadInternalData])
+
+  // Realtime BroadcastChannel & Storage Sync for Canonical Organization Tree
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    const handleSync = (collection?: string) => {
+      if (!collection || collection === 'organizations' || collection === 'organization_memberships') {
+        loadOrganizations()
+      }
+      if (!collection || collection === 'structures' || collection === 'sections' || collection === 'personnels') {
+        loadInternalData()
+      }
+    }
+
+    let channel: BroadcastChannel | null = null
+    try {
+      if (typeof BroadcastChannel !== 'undefined') {
+        channel = new BroadcastChannel('filament_structural_sync')
+        channel.onmessage = (event) => {
+          if (event.data?.type === 'structural_change') {
+            handleSync(event.data?.collection)
+          }
+        }
+      }
+    } catch {}
+
+    const handleStorageEvent = (event: StorageEvent) => {
+      if (
+        event.key &&
+        (event.key.includes('organizations') ||
+          event.key.includes('memberships') ||
+          event.key.includes('structures') ||
+          event.key.includes('sections') ||
+          event.key.includes('personnels'))
+      ) {
+        handleSync()
+      }
+    }
+
+    const handleCustomWindowSync = (event: CustomEvent) => {
+      handleSync(event.detail?.collection)
+    }
+
+    window.addEventListener('storage', handleStorageEvent)
+    window.addEventListener('filament_structural_change' as any, handleCustomWindowSync)
+
+    return () => {
+      if (channel) channel.close()
+      window.removeEventListener('storage', handleStorageEvent)
+      window.removeEventListener('filament_structural_change' as any, handleCustomWindowSync)
+    }
+  }, [loadOrganizations, loadInternalData])
+
+  const [isCodeManuallyEdited, setIsCodeManuallyEdited] = useState(false)
+
+  // -------------------------------------------------------------
+  // Organization Modal Actions (Hierarchical CRUD without duplication)
+  // -------------------------------------------------------------
+
+  const openCreateOrg = () => {
+    setEditingOrg(null)
+    setIsCodeManuallyEdited(false)
+    setOrgForm({
+      name: '',
+      short_name: '',
+      code: '',
+      description: '',
+      status: 'active',
+      period_active: '2024 - 2026',
+      email: '',
+      phone: '',
+      address: '',
+      parent_id: null,
+      unit_type: 'organisasi',
+    })
+    setIsOrgModalOpen(true)
   }
 
-  const openEditSection = (sec: Section) => {
-    setEditingSection(sec)
-    setSecForm({ name: sec.name, code: sec.code, description: sec.description || '' })
-    setIsSectionModalOpen(true)
+  const openEditOrg = (org: Organization) => {
+    setEditingOrg(org)
+    setIsCodeManuallyEdited(true)
+    setOrgForm({
+      name: org.name || '',
+      short_name: org.short_name || '',
+      code: org.code || '',
+      description: org.description || '',
+      status: org.status || 'active',
+      period_active: org.period_active || '2024 - 2026',
+      email: org.email || '',
+      phone: org.phone || '',
+      address: org.address || '',
+      parent_id: org.parent_id || null,
+      unit_type: (org.unit_type as OrganizationUnitType) || 'organisasi',
+    })
+    setIsOrgModalOpen(true)
   }
 
-  const handleSaveSection = async (e: React.FormEvent) => {
+  // Parent Options for Organization Create/Edit (Cycle-protected)
+  const orgParentOptions = useMemo(() => {
+    const tree = getOrganizationTree(null, organizations)
+    const flat: Array<{ id: string; name: string; level: number; code: string }> = []
+    const traverse = (nodes: OrganizationTreeNode[]) => {
+      for (const node of nodes) {
+        flat.push({ id: node.id, name: node.name, level: node.level ?? 0, code: node.code })
+        if (node.children?.length) traverse(node.children)
+      }
+    }
+    traverse(tree)
+
+    const descendantIds = editingOrg
+      ? getDescendantOrganizationIds(editingOrg.id, organizations, true)
+      : []
+
+    const validOrgs = flat.filter((o) => {
+      if (!editingOrg) return true
+      if (o.id === editingOrg.id) return false
+      if (descendantIds.includes(o.id)) return false
+      return true
+    })
+
+    return [
+      { value: '', label: '— Tanpa Induk / Tingkat Tertinggi (Root Node) —' },
+      ...validOrgs.map((o) => ({
+        value: o.id,
+        label: `${'  '.repeat(Math.max(0, o.level))}${o.level > 0 ? '└─ ' : ''}${o.name} (${o.code})`,
+      })),
+    ]
+  }, [organizations, editingOrg])
+
+  const handleSaveOrg = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!secForm.name.trim() || !secForm.code.trim()) {
-      error('Validasi Gagal', 'Nama dan Kode Seksi wajib diisi')
+    if (!orgForm.name.trim() || !orgForm.code.trim()) {
+      error('Validasi Gagal', 'Nama dan Kode Organisasi wajib diisi')
+      return
+    }
+
+    if (editingOrg && orgForm.parent_id === editingOrg.id) {
+      error('Validasi Gagal', 'Posisi jabatan tidak dapat memilih dirinya sendiri sebagai atasan langsung.')
       return
     }
 
     try {
-      const activeStruct = structures[0]
-      if (editingSection) {
-        await dataService.updateSection(editingSection.id, secForm, user)
-        success('Seksi Diperbarui', `Seksi ${secForm.name} berhasil diperbarui.`)
-      } else {
-        await dataService.createSection(
-          {
-            ...secForm,
-            organization_id: orgId,
-            structure_id: activeStruct?.id || 'str-1',
-            sort_order: sections.length + 1,
-          },
-          user
-        )
-        success('Seksi Ditambahkan', `Seksi ${secForm.name} siap ditugaskan program & personel.`)
+      const currentParent = organizations.find((o) => o.id === orgForm.parent_id)
+      const currentDerivedLevel = orgForm.parent_id && currentParent ? (currentParent.level ?? 0) + 1 : 0
+      const slug = orgForm.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
+      const email =
+        orgForm.email || `${orgForm.code.toLowerCase().replace(/[^a-z0-9]/g, '')}@ekosistem.id`
+
+      const payload = {
+        ...orgForm,
+        slug,
+        email,
+        parent_id: orgForm.parent_id || null,
+        level: currentDerivedLevel,
       }
-      setIsSectionModalOpen(false)
-      loadData()
+
+      if (editingOrg) {
+        await dataService.updateOrganization(editingOrg.id, payload, user)
+        success('Jabatan Diperbarui', `Jabatan "${orgForm.name}" berhasil diperbarui.`)
+      } else {
+        // Enforces assertCanCreateOrganizationStructure
+        await dataService.createOrganization(payload, user)
+        success('Jabatan Dibuat', `Jabatan "${orgForm.name}" berhasil ditambahkan ke struktur hierarki.`)
+      }
+
+      setIsOrgModalOpen(false)
+      await refreshOrganizations()
+      await loadOrganizations()
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Gagal menyimpan seksi'
+      const msg = err instanceof Error ? err.message : 'Gagal menyimpan posisi jabatan'
       error('Gagal', msg)
     }
   }
 
-  const handleDeleteSection = async (sec: Section) => {
+  const handleDeleteOrg = async (org: Organization) => {
     const ok = await confirm({
-      title: 'Hapus Seksi',
-      message: `Hapus seksi "${sec.name}"? Personel dan penugasan terkait akan terpengaruh.`,
+      title: 'Hapus Organisasi',
+      message: `Yakin ingin menghapus organisasi "${org.name}" dari hierarki? Data operasional akan terisolasi.`,
       tone: 'danger',
-      confirmLabel: 'Hapus Seksi',
+      confirmLabel: 'Hapus Organisasi',
     })
     if (!ok) return
     try {
-      await dataService.deleteSection(sec.id, user)
-      success('Seksi Dihapus', `Seksi ${sec.name} telah dihapus.`)
-      loadData()
+      await dataService.deleteOrganization(org.id, user)
+      success('Organisasi Dihapus', `Organisasi ${org.name} telah dihapus dari hierarki.`)
+      await refreshOrganizations()
+      await loadOrganizations()
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Gagal menghapus seksi'
+      const msg = err instanceof Error ? err.message : 'Gagal menghapus organisasi'
       error('Gagal', msg)
     }
   }
 
-  // Personnel actions
-  const openCreatePersonnel = (secId?: string, parentId?: string | null) => {
-    setEditingPersonnel(null)
-    setPrsForm({
-      name: '',
-      position: '',
-      section_id: secId || sections[0]?.id || '',
-      parent_id: parentId || '',
-      tupoksi: '',
-      authority: '',
-      responsibility: '',
-      email: '',
-      phone: '',
-    })
-    setIsPersonModalOpen(true)
-  }
 
-  const openEditPersonnel = (prs: Personnel) => {
-    setEditingPersonnel(prs)
-    setPrsForm({
-      name: prs.name || '',
-      position: prs.position || prs.role_title || '',
-      section_id: prs.section_id || sections[0]?.id || '',
-      parent_id: prs.parent_id || '',
-      tupoksi: prs.tupoksi || '',
-      authority: prs.authority || '',
-      responsibility: prs.responsibility || '',
-      email: prs.email || '',
-      phone: prs.phone || '',
-    })
-    setIsPersonModalOpen(true)
-  }
 
-  const handleSavePersonnel = async (e: React.FormEvent) => {
-    e.preventDefault()
-
-    // Jabatan is REQUIRED. Nama is explicitly OPTIONAL according to requirement.
-    if (!prsForm.position.trim()) {
-      error('Validasi Gagal', 'Nama Jabatan / Posisi Penugasan wajib diisi')
-      return
-    }
-
-    try {
-      const payload = {
-        name: prsForm.name.trim() || undefined,
-        position: prsForm.position.trim(),
-        role_title: prsForm.position.trim(),
-        section_id: prsForm.section_id,
-        parent_id: prsForm.parent_id ? prsForm.parent_id : null,
-        tupoksi: prsForm.tupoksi.trim() || undefined,
-        authority: prsForm.authority.trim() || undefined,
-        responsibility: prsForm.responsibility.trim() || undefined,
-        period_id: selectedPeriodId || undefined,
-        email: prsForm.email.trim() || undefined,
-        phone: prsForm.phone.trim() || undefined,
-      }
-
-      if (editingPersonnel) {
-        await dataService.updatePersonnel(editingPersonnel.id, payload, user)
-        success('Jabatan Diperbarui', `Jabatan ${prsForm.position} berhasil diperbarui.`)
-      } else {
-        await dataService.createPersonnel(
-          {
-            ...payload,
-            organization_id: orgId,
-            status: 'active',
-          },
-          user
-        )
-        success('Jabatan Ditambahkan', `Jabatan ${prsForm.position} berhasil ditambahkan ke struktur.`)
-      }
-      setIsPersonModalOpen(false)
-      loadData()
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Gagal menyimpan jabatan'
-      error('Gagal', msg)
-    }
-  }
-
-  // Hierarchy-aware delete handlers
-  const requestDeletePersonnel = (prs: Personnel) => {
-    setDeletingPersonnel(prs)
-    setIsHierarchyDeleteOpen(true)
-  }
-
-  const handleConfirmDeletePersonnel = async (
-    prs: Personnel,
-    options: { reassignToParentId?: string | null; cascade?: boolean }
-  ) => {
-    try {
-      await dataService.deletePersonnel(prs.id, options, user)
-      success('Jabatan Dihapus', `Jabatan ${prs.position} telah dihapus.`)
-      setIsDetailModalOpen(false)
-      loadData()
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Gagal menghapus jabatan'
-      error('Gagal', msg)
-    }
-  }
-
-  // Node selection & detail modal logic:
-  // - Klik pertama: memilih (select) kartu jabatan
-  // - Klik kedua (pada kartu yang sudah terpilih): memunculkan Detail Jabatan
   const selectedPersonnelRef = useRef<Personnel | null>(selectedPersonnel)
   useEffect(() => {
     selectedPersonnelRef.current = selectedPersonnel
@@ -309,52 +377,25 @@ export const StructurePage: React.FC = () => {
 
   const handleNodeClick = (prs: Personnel) => {
     if (selectedPersonnelRef.current?.id === prs.id) {
-      // Klik kedua pada node yang sama -> Buka modal Detail
       setIsDetailModalOpen(true)
     } else {
-      // Klik pertama -> Pilih (select) node
       setSelectedPersonnel(prs)
       selectedPersonnelRef.current = prs
     }
   }
 
-  // Klik selain Kartu Jabatan -> unselect / batalkan pilihan
   const handleClearSelection = () => {
     setSelectedPersonnel(null)
     selectedPersonnelRef.current = null
   }
 
-  // Available Parent Options (Prevents self-selection and cyclic loops)
-  const availableParentOptions = useMemo(() => {
-    const disallowed = editingPersonnel
-      ? new Set([editingPersonnel.id, ...getDescendantIds(editingPersonnel.id, personnels)])
-      : new Set<string>()
 
-    const options = [
-      { value: '', label: 'Tanpa Atasan (Pucuk Pimpinan / Root)' },
-    ]
 
-    personnels
-      .filter((p) => !disallowed.has(p.id))
-      .forEach((p) => {
-        const sec = sections.find((s) => s.id === p.section_id)
-        const secLabel = sec ? ` [${sec.code}]` : ''
-        options.push({
-          value: p.id,
-          label: `${p.position || 'Jabatan'}${secLabel} (${p.name || 'Belum ditentukan'})`,
-        })
-      })
-
-    return options
-  }, [editingPersonnel, personnels, sections])
-
-  // Section options for personnel form
-  const sectionOptions = useMemo(() => {
-    return sections.map((s) => ({
-      value: s.id,
-      label: `${s.name} (${s.code})`,
-    }))
-  }, [sections])
+  // Preview Org Members
+  const previewOrgMembers = useMemo(() => {
+    if (!previewMembersOrg) return []
+    return memberships.filter((m) => m.organization_id === previewMembersOrg.id)
+  }, [previewMembersOrg, memberships])
 
   return (
     <PageContainer variant="full">
@@ -363,46 +404,65 @@ export const StructurePage: React.FC = () => {
         <div>
           <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-fg flex items-center gap-2.5">
             <HeroSquares2X2 className="w-7 h-7 text-amber-500" />
-            Struktur Organisasi
+            Jabatan
           </h1>
-          <div className="flex items-center gap-2 mt-1 flex-wrap">
-            <span className="text-xs px-2.5 py-0.5 rounded-md bg-amber-500/10 text-amber-600 dark:text-amber-400 font-medium border border-amber-500/20 flex items-center gap-1.5">
-              <HeroCalendar className="w-3.5 h-3.5" />
-              {periods.find((p) => p.id === selectedPeriodId)?.name || 'Periode Aktif'}
-            </span>
-          </div>
         </div>
 
         {/* Action Controls & View Switcher */}
         <div className="flex flex-wrap items-center gap-2 shrink-0">
-          {/* Segmented View Switcher */}
+          {/* Segmented View Switcher: 3 Tampilan Utama */}
           <div className="p-0.5 rounded-lg bg-surface-muted border border-line flex items-center gap-0.5">
             <button
               type="button"
-              onClick={() => setViewMode('tree')}
-              className={`px-2.5 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
-                viewMode === 'tree'
-                  ? 'bg-surface text-fg shadow-2xs border border-line/60'
+              onClick={() => setViewMode('org_tree')}
+              className={cn(
+                'px-2.5 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5',
+                viewMode === 'org_tree'
+                  ? 'bg-surface text-fg shadow-2xs border border-line/60 font-bold'
                   : 'text-fg-muted hover:text-fg'
-              }`}
+              )}
+            >
+              <HeroBuildingOffice className="w-3.5 h-3.5 text-purple-500" />
+              <span>Hierarki Jabatan</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('tree')}
+              className={cn(
+                'px-2.5 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5',
+                viewMode === 'tree'
+                  ? 'bg-surface text-fg shadow-2xs border border-line/60 font-bold'
+                  : 'text-fg-muted hover:text-fg'
+              )}
             >
               <HeroArrowsRightLeft className="w-3.5 h-3.5 text-amber-500" />
-              Bagan
+              <span>Bagan</span>
             </button>
             <button
               type="button"
               onClick={() => setViewMode('cards')}
-              className={`px-2.5 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
+              className={cn(
+                'px-2.5 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5',
                 viewMode === 'cards'
-                  ? 'bg-surface text-fg shadow-2xs border border-line/60'
+                  ? 'bg-surface text-fg shadow-2xs border border-line/60 font-bold'
                   : 'text-fg-muted hover:text-fg'
-              }`}
+              )}
             >
               <HeroUsers className="w-3.5 h-3.5 text-blue-500" />
-              Seksi
+              <span>Seksi</span>
             </button>
           </div>
 
+          <Button
+            variant="primary"
+            onClick={openCreateOrg}
+            className="shrink-0"
+          >
+            <HeroPlus className="w-4 h-4 mr-1.5" />
+            + Tambah Jabatan
+          </Button>
+
+          {/* Contextual Action Buttons depending on ViewMode */}
           <Button
             variant="secondary"
             onClick={() => setIsExportModalOpen(true)}
@@ -411,36 +471,53 @@ export const StructurePage: React.FC = () => {
             <HeroArrowDownTray className="w-4 h-4 mr-1.5 text-amber-500" />
             Ekspor
           </Button>
-
-          <Button variant="secondary" onClick={openCreateSection} className="shrink-0">
-            <HeroPlus className="w-4 h-4 mr-1.5" />
-            Tambah Seksi
-          </Button>
-
-          <Button
-            variant="primary"
-            onClick={() => openCreatePersonnel()}
-            className="shrink-0"
-          >
-            <HeroPlus className="w-4 h-4 mr-1.5" />
-            Tambah Jabatan
-          </Button>
         </div>
       </div>
 
-      {/* Structure Period Banner */}
-      {structures.length > 0 && (
+      {/* Info Context Banner */}
+      {viewMode === 'org_tree' ? (
+        <div className="p-4 rounded-xl border border-line bg-surface shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-purple-500/10 text-purple-600 dark:text-purple-400 flex items-center justify-center font-bold text-sm shrink-0">
+              <HeroBuildingOffice className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-fg text-sm">Hierarki Struktur Jabatan</span>
+                <Badge variant="success">Otomatis Terbentuk</Badge>
+              </div>
+              <p className="text-xs text-fg-muted mt-0.5">
+                Pohon hierarki terbentuk otomatis dari pembagian <strong>Jabatan</strong>, <strong>Seksi</strong>, dan <strong>Bagan Personel</strong>. Halaman ini berfungsi sebagai visualisasi interaktif dan ekspor dokumen.
+              </p>
+            </div>
+          </div>
+          <div className="text-xs text-fg-muted shrink-0 flex items-center gap-2">
+            <span>Total Terdaftar: <strong className="text-fg">{organizations.length}</strong> Posisi Jabatan</span>
+            {currentOrganization && (
+              <>
+                <span>•</span>
+                <span>Jabatan Aktif: <strong className="text-amber-600 dark:text-amber-400">{currentOrganization.name}</strong></span>
+              </>
+            )}
+          </div>
+        </div>
+      ) : (
+        /* Internal Structure Banner for currentOrganization */
         <div className="p-4 rounded-xl border border-line bg-surface shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
-            <div className="flex items-center gap-2">
-              <span className="font-bold text-fg text-sm">{structures[0].name}</span>
-              <Badge variant="success">Periode Aktif</Badge>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-bold text-fg text-sm">
+                Struktur Internal: {currentOrganization?.name || 'Belum Memilih Jabatan'}
+              </span>
+              <Badge variant="success">
+                {periods.find((p) => p.id === selectedPeriodId)?.name || 'Periode Aktif'}
+              </Badge>
             </div>
             <p className="text-xs text-fg-muted mt-0.5">
-              Masa Bakti: {structures[0].period_start} s/d {structures[0].period_end}
+              Struktur pembagian seksi dan personel internal khusus untuk posisi jabatan yang sedang aktif.
             </p>
           </div>
-          <div className="text-xs text-fg-muted flex items-center gap-3">
+          <div className="text-xs text-fg-muted flex items-center gap-3 shrink-0">
             <span>
               Total <strong className="text-fg">{sections.length}</strong> Seksi Pelaksana
             </span>
@@ -453,44 +530,90 @@ export const StructurePage: React.FC = () => {
       )}
 
       {/* Main Content Area */}
-      {isLoading ? (
+      {viewMode === 'org_tree' ? (
+        /* ========================================================
+           TAB 1: STRUKTUR ORGANISASI (MACRO CANONICAL HIERARCHY)
+           ======================================================== */
+        isLoadingOrgs ? (
+          <div className="p-16 text-center text-fg-muted border border-line rounded-2xl bg-surface">
+            <div className="animate-pulse flex flex-col items-center gap-2">
+              <HeroBuildingOffice className="w-8 h-8 text-purple-500 animate-spin" />
+              <span className="text-sm font-medium">Memuat hierarki struktur jabatan...</span>
+            </div>
+          </div>
+        ) : organizations.length === 0 ? (
+          <div className="p-16 text-center border-2 border-dashed border-line rounded-2xl bg-surface space-y-4">
+            <div className="w-14 h-14 mx-auto rounded-2xl bg-purple-500/10 text-purple-600 dark:text-purple-400 flex items-center justify-center">
+              <HeroBuildingOffice className="w-7 h-7" />
+            </div>
+            <div className="max-w-md mx-auto space-y-1">
+              <h3 className="text-base font-bold text-fg">Belum Ada Struktur Jabatan</h3>
+              <p className="text-xs text-fg-muted leading-relaxed">
+                Struktur jabatan belum diatur. Buat posisi jabatan baru untuk memulai susunan wewenang.
+              </p>
+            </div>
+            <Button variant="primary" onClick={openCreateOrg} className="mt-2">
+              <HeroPlus className="w-4 h-4 mr-2" />
+              Tambah Posisi Jabatan
+            </Button>
+          </div>
+        ) : (
+          <OrganizationTreeView
+            organizations={organizations}
+            memberships={memberships}
+            currentOrganization={currentOrganization}
+            onSwitchOrganization={(orgId) => {
+              switchOrganization(orgId)
+              success('Organisasi Aktif Diganti', 'Konteks operasional telah beralih ke unit yang dipilih.')
+            }}
+            onEdit={openEditOrg}
+            onDelete={handleDeleteOrg}
+            onPreviewMembers={(org) => setPreviewMembersOrg(org)}
+          />
+        )
+      ) : isLoadingInternal ? (
+        /* Internal Structure Loading */
         <div className="p-16 text-center text-fg-muted border border-line rounded-2xl bg-surface">
           <div className="animate-pulse flex flex-col items-center gap-2">
             <HeroSquares2X2 className="w-8 h-8 text-amber-500 animate-spin" />
-            <span className="text-sm font-medium">Memuat bagan struktur organisasi...</span>
+            <span className="text-sm font-medium">Memuat struktur personalia internal...</span>
           </div>
         </div>
       ) : personnels.length === 0 ? (
-        /* Empty State */
+        /* Internal Empty State - Clearly isolated from Macro Org */
         <div className="p-16 text-center border-2 border-dashed border-line rounded-2xl bg-surface space-y-4">
           <div className="w-14 h-14 mx-auto rounded-2xl bg-amber-500/10 text-amber-500 flex items-center justify-center">
             <HeroSquares2X2 className="w-7 h-7" />
           </div>
           <div className="max-w-md mx-auto space-y-1">
-            <h3 className="text-base font-bold text-fg">Belum Ada Struktur Organisasi</h3>
+            <h3 className="text-base font-bold text-fg">
+              Belum Ada Susunan Bagan untuk {currentOrganization?.name || 'Jabatan Ini'}
+            </h3>
             <p className="text-xs text-fg-muted leading-relaxed">
-              Tambahkan jabatan pertama untuk membangun hierarki bagan organisasi secara interaktif.
+              Bagan personel dan seksi dapat langsung ditambahkan untuk melengkapi hierarki kepengurusan.
             </p>
           </div>
-          <Button variant="primary" onClick={() => openCreatePersonnel()} className="mt-2">
+          <Button variant="primary" onClick={openCreateOrg} className="mt-2">
             <HeroPlus className="w-4 h-4 mr-2" />
-            Tambah Jabatan Pertama
+            Tambah Jabatan
           </Button>
         </div>
       ) : viewMode === 'tree' ? (
-        /* View Mode 1: Interactive Mind-Map / Tree Canvas */
+        /* ========================================================
+           TAB 2: BAGAN PERSONEL INTERNAL (MIND-MAP CANVAS)
+           ======================================================== */
         <OrganizationTree
           personnels={personnels}
           sections={sections}
           selectedNodeId={selectedPersonnel?.id}
           onNodeClick={handleNodeClick}
           onClearSelection={handleClearSelection}
-          onAddSubordinate={(parent) => openCreatePersonnel(parent.section_id, parent.id)}
-          onAddRoot={() => openCreatePersonnel(undefined, null)}
           onExport={() => setIsExportModalOpen(true)}
         />
       ) : (
-        /* View Mode 2: Existing Section & Personnel Cards */
+        /* ========================================================
+           TAB 3: SEKSI & PERSONALIA (CARDS VIEW)
+           ======================================================== */
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {sections.map((sec) => {
             const secPersonnel = personnels.filter((p) => p.section_id === sec.id)
@@ -518,100 +641,53 @@ export const StructurePage: React.FC = () => {
                       </p>
                     </div>
                   </div>
-
-                  <div className="flex items-center gap-1 shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => openEditSection(sec)}
-                      className="p-1.5 rounded-lg text-fg-muted hover:text-fg hover:bg-hover-bg transition-colors"
-                      aria-label="Edit Seksi"
-                    >
-                      <HeroPencilSquare className="w-4 h-4" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteSection(sec)}
-                      className="p-1.5 rounded-lg text-fg-muted hover:text-red-500 hover:bg-hover-bg transition-colors"
-                      aria-label="Hapus Seksi"
-                    >
-                      <HeroTrash className="w-4 h-4" />
-                    </button>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <span className="text-[11px] font-mono text-fg-muted bg-surface px-2 py-0.5 rounded border border-line">
+                      {secPersonnel.length} Posisi
+                    </span>
                   </div>
                 </div>
 
-                {/* Personnel Sub-list */}
-                <div className="p-5 flex-1 space-y-4">
+                {/* Section Personnel List */}
+                <div className="p-5 flex-1 space-y-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-fg flex items-center gap-1.5">
-                      <HeroUsers className="w-4 h-4 text-amber-500" />
-                      Personel & Tupoksi ({secPersonnel.length})
+                    <span className="text-xs font-bold text-fg-muted uppercase tracking-wider">
+                      Daftar Jabatan ({secPersonnel.length})
                     </span>
-                    <button
-                      type="button"
-                      onClick={() => openCreatePersonnel(sec.id)}
-                      className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-600 hover:text-amber-700 dark:text-amber-400 cursor-pointer"
-                    >
-                      <HeroPlus className="w-3.5 h-3.5" />
-                      Tambah Personel
-                    </button>
                   </div>
 
                   {secPersonnel.length === 0 ? (
-                    <div className="p-6 text-center text-xs text-fg-muted border border-dashed border-line rounded-xl">
-                      Belum ada personel yang ditugaskan pada seksi ini.
+                    <div className="p-6 text-center border border-dashed border-line rounded-xl text-xs text-fg-muted">
+                      Belum ada jabatan pada seksi ini.
                     </div>
                   ) : (
-                    <div className="space-y-3">
+                    <div className="space-y-2">
                       {secPersonnel.map((prs) => (
                         <div
                           key={prs.id}
-                          className="p-3.5 rounded-xl border border-line-strong bg-surface-muted hover:border-amber-500/50 transition-all flex flex-col gap-2 shadow-2xs"
+                          className="p-3 rounded-xl border border-line bg-surface-muted/50 hover:bg-surface-muted transition flex items-center justify-between gap-3"
                         >
-                          <div className="flex items-center justify-between gap-2">
-                            <div>
-                              <p className="text-xs font-bold text-fg">
-                                {prs.position}
-                              </p>
-                              <p className="text-[11px] font-medium text-fg-muted">
-                                {prs.name || (
-                                  <span className="italic">Belum ditentukan</span>
-                                )}
-                              </p>
-                            </div>
-                            <div className="flex items-center gap-1 shrink-0">
-                              <button
-                                type="button"
-                                onClick={() => handleNodeClick(prs)}
-                                className="p-1 text-fg-muted hover:text-amber-500"
-                                title="Lihat Detail Tupoksi"
-                              >
-                                <HeroEye className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => openEditPersonnel(prs)}
-                                className="p-1 text-fg-muted hover:text-fg"
-                                title="Edit"
-                              >
-                                <HeroPencilSquare className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => requestDeletePersonnel(prs)}
-                                className="p-1 text-fg-muted hover:text-red-500"
-                                title="Hapus"
-                              >
-                                <HeroTrash className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
+                          <div className="min-w-0">
+                            <span className="font-semibold text-fg text-sm block truncate">
+                              {prs.position || prs.role_title}
+                            </span>
+                            <span className="text-xs text-fg-muted truncate block">
+                              {prs.name ? prs.name : 'Pejabat Belum Ditentukan'}
+                            </span>
                           </div>
-
-                          {prs.tupoksi && (
-                            <div className="p-2 rounded-lg bg-surface border border-line text-[11px] text-fg-muted leading-relaxed line-clamp-2">
-                              <strong className="text-fg font-semibold">Tupoksi: </strong>
-                              {prs.tupoksi}
-                            </div>
-                          )}
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedPersonnel(prs)
+                                setIsDetailModalOpen(true)
+                              }}
+                              className="p-1.5 rounded-lg text-fg-muted hover:text-fg hover:bg-hover-bg transition cursor-pointer"
+                              title="Lihat Detail & Tupoksi"
+                            >
+                              <HeroEye className="w-4 h-4" />
+                            </button>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -623,238 +699,170 @@ export const StructurePage: React.FC = () => {
         </div>
       )}
 
-      {/* Structure Detail Modal (Interactive Node Drawer / Dialog) */}
+      {/* ========================================================
+          MODALS
+          ======================================================== */}
+
+      {/* Modal Tambah / Ubah Posisi Jabatan (Minimalist & Clean) */}
+      <Modal
+        isOpen={isOrgModalOpen}
+        onClose={() => setIsOrgModalOpen(false)}
+        title={editingOrg ? `Ubah Posisi: ${editingOrg.name}` : 'Tambah Posisi Jabatan'}
+        size="md"
+      >
+        <form noValidate onSubmit={handleSaveOrg} className="space-y-3.5">
+          <Input
+            label="Nama Jabatan"
+            required
+            value={orgForm.name}
+            onChange={(e) => {
+              const val = e.target.value
+              const autoCode = val
+                .split(' ')
+                .map((w) => w[0])
+                .join('')
+                .toUpperCase()
+                .slice(0, 8)
+              setOrgForm((prev) => ({
+                ...prev,
+                name: val,
+                code: !editingOrg && !isCodeManuallyEdited ? autoCode : prev.code,
+              }))
+            }}
+            placeholder="Contoh: Ketua, Waka 1, Seksi Pendidikan"
+          />
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Select
+              label="Tingkat Hierarki"
+              value={orgForm.unit_type}
+              onChange={(e) =>
+                setOrgForm({ ...orgForm, unit_type: e.target.value as OrganizationUnitType })
+              }
+              options={[
+                { value: 'kepala_pengurus', label: 'Ketua Pengurus (Pucuk)' },
+                { value: 'waka', label: 'Wakil Ketua (Waka)' },
+                { value: 'seksi', label: 'Seksi Pengurus' },
+                { value: 'organisasi', label: 'Jabatan Pelaksana' },
+              ]}
+            />
+
+            <Input
+              label="Kode Jabatan"
+              required
+              value={orgForm.code}
+              onChange={(e) => {
+                setIsCodeManuallyEdited(true)
+                setOrgForm({ ...orgForm, code: e.target.value.toUpperCase() })
+              }}
+              placeholder="Misal: KP, WAKA-1, SEK-01"
+            />
+          </div>
+
+          <Select
+            label="Atasan Langsung"
+            value={orgForm.parent_id || ''}
+            onChange={(e) => setOrgForm({ ...orgForm, parent_id: e.target.value || null })}
+            options={orgParentOptions}
+          />
+
+          <Textarea
+            label="Tupoksi & Kewenangan (Opsional)"
+            rows={2}
+            value={orgForm.description}
+            onChange={(e) => setOrgForm({ ...orgForm, description: e.target.value })}
+            placeholder="Deskripsi singkat tugas pokok atau tanggung jawab..."
+          />
+
+          <div className="flex items-center justify-end gap-2 pt-3 border-t border-line">
+            <Button type="button" variant="secondary" onClick={() => setIsOrgModalOpen(false)}>
+              Batal
+            </Button>
+            <Button type="submit" variant="primary">
+              <HeroCheck className="w-4 h-4 mr-1.5" />
+              {editingOrg ? 'Perbarui' : 'Simpan Jabatan'}
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Preview Members Modal (For Organization Node) */}
+      {previewMembersOrg && (
+        <Modal
+          isOpen={!!previewMembersOrg}
+          onClose={() => setPreviewMembersOrg(null)}
+          title={`Daftar Akun: ${previewMembersOrg.name}`}
+          size="lg"
+        >
+          <div className="space-y-4">
+            <div className="p-3 bg-surface-muted rounded-xl border border-line flex items-center justify-between text-xs">
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-fg">{previewMembersOrg.name}</span>
+                <span className="font-mono text-fg-muted">({previewMembersOrg.code})</span>
+              </div>
+              <Badge variant="primary">{previewOrgMembers.length} Akun Terdaftar</Badge>
+            </div>
+
+            <div className="border border-line rounded-xl overflow-hidden max-h-80 overflow-y-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-surface-muted text-fg-muted font-semibold border-b border-line">
+                  <tr>
+                    <th className="py-2.5 px-3">Nama Akun</th>
+                    <th className="py-2.5 px-3">Tingkat</th>
+                    <th className="py-2.5 px-3">Peran</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-line">
+                  {previewOrgMembers.length === 0 ? (
+                    <tr>
+                      <td colSpan={3} className="py-6 text-center text-fg-muted">
+                        Belum ada akun yang ditugaskan pada unit ini.
+                      </td>
+                    </tr>
+                  ) : (
+                    previewOrgMembers.map((m) => (
+                      <tr key={m.id} className="hover:bg-hover-bg transition">
+                        <td className="py-2.5 px-3 font-semibold text-fg">
+                          {m.user?.name || m.user_id}
+                          <div className="text-[11px] font-mono text-fg-muted font-normal">
+                            {m.user?.email}
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <Badge variant={m.level === 'admin' ? 'primary' : 'gray'}>
+                            {m.level === 'admin' ? 'Admin' : 'Anggota'}
+                          </Badge>
+                        </td>
+                        <td className="py-2.5 px-3 text-fg font-medium">
+                          {m.role?.name || 'Pengurus'}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <Button type="button" variant="secondary" onClick={() => setPreviewMembersOrg(null)}>
+                Tutup
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Personnel Detail Modal (Tupoksi, Wewenang, Tanggung Jawab - Read Only) */}
       <StructureDetailModal
         isOpen={isDetailModalOpen}
         onClose={() => setIsDetailModalOpen(false)}
         personnel={selectedPersonnel}
         allPersonnels={personnels}
         sections={sections}
-        onEdit={(prs) => {
-          setIsDetailModalOpen(false)
-          openEditPersonnel(prs)
+        onSelectNode={(prs) => {
+          setSelectedPersonnel(prs)
         }}
-        onDelete={(prs) => {
-          setIsDetailModalOpen(false)
-          requestDeletePersonnel(prs)
-        }}
-        onAddSubordinate={(parentPrs) => {
-          setIsDetailModalOpen(false)
-          openCreatePersonnel(parentPrs.section_id, parentPrs.id)
-        }}
-        onSelectNode={(node) => setSelectedPersonnel(node)}
       />
-
-      {/* Hierarchy-Aware Delete Confirmation Modal */}
-      <HierarchyDeleteModal
-        isOpen={isHierarchyDeleteOpen}
-        onClose={() => setIsHierarchyDeleteOpen(false)}
-        personnel={deletingPersonnel}
-        subordinates={
-          deletingPersonnel
-            ? personnels.filter((p) => p.parent_id === deletingPersonnel.id)
-            : []
-        }
-        parentPersonnel={
-          deletingPersonnel && deletingPersonnel.parent_id
-            ? personnels.find((p) => p.id === deletingPersonnel.parent_id) || null
-            : null
-        }
-        onConfirm={handleConfirmDeletePersonnel}
-      />
-
-      {/* Section Create/Edit Modal (Existing Form) */}
-      <Modal
-        isOpen={isSectionModalOpen}
-        onClose={() => setIsSectionModalOpen(false)}
-        title={editingSection ? 'Edit Seksi / Divisi' : 'Tambah Seksi Baru'}
-      >
-        <form noValidate onSubmit={handleSaveSection} className="space-y-4">
-          <Input
-            label="Nama Seksi / Divisi"
-            required
-            value={secForm.name}
-            onChange={(e) => setSecForm({ ...secForm, name: e.target.value })}
-            placeholder="Contoh: Seksi Pendidikan"
-          />
-
-          <Input
-            label="Kode Singkatan"
-            required
-            value={secForm.code}
-            onChange={(e) => setSecForm({ ...secForm, code: e.target.value.toUpperCase() })}
-            placeholder="SEK-DIK"
-            className="font-mono uppercase"
-          />
-
-          <Textarea
-            label="Uraian Bidang Tanggung Jawab"
-            rows={3}
-            autoGrow
-            value={secForm.description}
-            onChange={(e) => setSecForm({ ...secForm, description: e.target.value })}
-            placeholder="Uraian bidang"
-          />
-
-          <div className="flex items-center justify-end gap-3 pt-4 border-t border-line">
-            <Button type="button" variant="secondary" onClick={() => setIsSectionModalOpen(false)}>
-              Batal
-            </Button>
-            <Button type="submit" variant="primary">
-              <HeroCheck className="w-4 h-4 mr-1.5" />
-              {editingSection ? 'Perbarui Seksi' : 'Buat Seksi'}
-            </Button>
-          </div>
-        </form>
-      </Modal>
-
-      {/* Personnel Create/Edit Modal (Refined 2-Column Responsive Layout) */}
-      <Modal
-        isOpen={isPersonModalOpen}
-        onClose={() => setIsPersonModalOpen(false)}
-        title={editingPersonnel ? 'Edit Jabatan & Tupoksi' : 'Daftarkan Jabatan & Personel Baru'}
-        size="2xl"
-        footer={
-          <div className="flex items-center justify-end gap-3 w-full">
-            <Button type="button" variant="secondary" onClick={() => setIsPersonModalOpen(false)}>
-              Batal
-            </Button>
-            <Button type="submit" form="form-personnel" variant="primary">
-              <HeroCheck className="w-4 h-4 mr-1.5" />
-              {editingPersonnel ? 'Perbarui Jabatan' : 'Buat Jabatan'}
-            </Button>
-          </div>
-        }
-      >
-        <form
-          id="form-personnel"
-          noValidate
-          onSubmit={handleSavePersonnel}
-          className="space-y-5 max-h-[62vh] overflow-y-auto pr-1"
-        >
-          {/* Section 1: Identitas Posisi & Personel */}
-          <div className="space-y-3.5">
-            <div className="pb-1.5 border-b border-line-divider flex items-center justify-between">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-fg-muted">
-                Identitas Posisi & Personel
-              </span>
-              <span className="text-[11px] text-fg-muted font-medium">
-                * Wajib diisi
-              </span>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Input
-                label="Jabatan / Posisi Penugasan"
-                required
-                value={prsForm.position}
-                onChange={(e) => setPrsForm({ ...prsForm, position: e.target.value })}
-                placeholder="Contoh: Koordinator Publikasi"
-                helperText="Nama posisi resmi dalam bagan struktur."
-              />
-
-              <Input
-                label="Nama Personel / Pejabat (Opsional)"
-                value={prsForm.name}
-                onChange={(e) => setPrsForm({ ...prsForm, name: e.target.value })}
-                placeholder="Contoh: Ahmad Fauzi"
-                helperText="Kosongkan jika posisi belum terisi pejabat definitif."
-              />
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Select
-                label="Struktur Atasan Langsung (Parent)"
-                placeholder="Pilih atasan langsung..."
-                options={availableParentOptions}
-                value={prsForm.parent_id}
-                onValueChange={(val) => setPrsForm({ ...prsForm, parent_id: val })}
-                helperText="Kosongkan jika posisi ini adalah pucuk pimpinan utama."
-              />
-
-              {sections.length > 0 ? (
-                <Select
-                  label="Seksi / Divisi Naungan"
-                  options={sectionOptions}
-                  value={prsForm.section_id}
-                  onValueChange={(val) => setPrsForm({ ...prsForm, section_id: val })}
-                  helperText="Penempatan divisi operasional."
-                />
-              ) : (
-                <div className="flex flex-col justify-end pb-1 text-xs text-fg-muted">
-                  <span className="font-medium text-fg">Seksi / Divisi Naungan</span>
-                  <span className="text-[11px] text-fg-muted mt-1">Belum ada seksi yang terdaftar.</span>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Section 2: Tugas Pokok, Fungsi & Akuntabilitas */}
-          <div className="space-y-3.5 pt-1">
-            <div className="pb-1.5 border-b border-line-divider">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-fg-muted">
-                Tugas Pokok, Fungsi & Akuntabilitas
-              </span>
-            </div>
-
-            <Textarea
-              label="Tupoksi (Tugas Pokok & Fungsi)"
-              rows={3}
-              autoGrow
-              value={prsForm.tupoksi}
-              onChange={(e) => setPrsForm({ ...prsForm, tupoksi: e.target.value })}
-              placeholder="Uraikan tugas pokok dan rincian fungsi operasional jabatan..."
-              helperText="Gunakan baris baru atau penomoran untuk memisahkan butir tugas dan fungsi."
-            />
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Textarea
-                label="Kewenangan Resmi (Wewenang Keputusan)"
-                rows={2}
-                autoGrow
-                value={prsForm.authority}
-                onChange={(e) => setPrsForm({ ...prsForm, authority: e.target.value })}
-                placeholder="Contoh: Mengesahkan jadwal kerja dan persetujuan teknis..."
-                helperText="Hak dan otorisasi pengambilan keputusan."
-              />
-              <Textarea
-                label="Tanggung Jawab (Akuntabilitas Hasil)"
-                rows={2}
-                autoGrow
-                value={prsForm.responsibility}
-                onChange={(e) => setPrsForm({ ...prsForm, responsibility: e.target.value })}
-                placeholder="Contoh: Kelancaran operasional siaran dan pemeliharaan alat..."
-                helperText="Akuntabilitas kinerja kepada pimpinan."
-              />
-            </div>
-          </div>
-
-          {/* Section 3: Kontak Koordinasi */}
-          <div className="space-y-3.5 pt-1">
-            <div className="pb-1.5 border-b border-line-divider">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-fg-muted">
-                Kontak Koordinasi (Opsional)
-              </span>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Input
-                type="email"
-                label="Email Resmi / Pribadi"
-                value={prsForm.email}
-                onChange={(e) => setPrsForm({ ...prsForm, email: e.target.value })}
-                placeholder="pejabat@organisasi.or.id"
-              />
-              <Input
-                label="No. Telepon / WhatsApp"
-                value={prsForm.phone}
-                onChange={(e) => setPrsForm({ ...prsForm, phone: e.target.value })}
-                placeholder="081234567890"
-              />
-            </div>
-          </div>
-        </form>
-      </Modal>
 
       {/* Structure Export Modal (PDF / PNG / JPG / ZIP) */}
       <StructureExportModal

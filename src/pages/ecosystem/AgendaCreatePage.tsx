@@ -52,14 +52,17 @@ export const AgendaCreatePage: React.FC = () => {
 
   const [programs, setPrograms] = useState<Program[]>([])
   const [sections, setSections] = useState<OrgSection[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  const [isLoading, setIsLoading] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [formData, setFormData] = useState<FormData>(emptyForm())
 
   const orgId = currentOrganization?.id || ''
 
   const loadData = useCallback(async () => {
-    if (!orgId) return
+    if (!orgId) {
+      setIsLoading(false)
+      return
+    }
     setIsLoading(true)
     try {
       const [progs, secs] = await Promise.all([
@@ -136,11 +139,8 @@ export const AgendaCreatePage: React.FC = () => {
             ]}
           />
           <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-fg">
-            Jadwalkan Agenda Baru
+            Agenda Baru
           </h1>
-          <p className="hidden sm:block text-xs sm:text-sm text-fg-muted">
-            Lengkapi rincian kegiatan, induk program kerja, jadwal waktu, serta estimasi kebutuhan anggaran.
-          </p>
         </div>
         <Button
           variant="secondary"
@@ -159,23 +159,22 @@ export const AgendaCreatePage: React.FC = () => {
       ) : (
         <form noValidate onSubmit={(e) => handleSave(e, false)} className="space-y-6">
           <SectionGrid columns={12}>
-            {/* IDENTITAS KEGIATAN (Desktop: 6 cols / 50%) */}
+            {/* IDENTITAS KEGIATAN */}
             <Section
-              title="Identitas Kegiatan"
-              description="Nama kegiatan, relasi induk program kerja, dan seksi penanggung jawab."
+              title="Informasi Agenda"
               icon={<HeroCalendar className="w-5 h-5" />}
               columns={1}
               className="lg:col-span-6"
             >
               <Input
-                label="Nama Kegiatan / Agenda"
+                label="Nama Agenda"
                 required
                 value={formData.title}
                 onChange={(e) => set('title', e.target.value)}
-                placeholder="Contoh: Workshop Penulisan Jurnal Bereputasi Internasional"
+                placeholder="Workshop Penulisan Jurnal"
               />
               <Select
-                label="Induk Program Kerja"
+                label="Program"
                 required
                 value={formData.program_id}
                 options={programs.map((p) => ({ value: p.id, label: p.title }))}
@@ -190,17 +189,16 @@ export const AgendaCreatePage: React.FC = () => {
                 }}
               />
               <Select
-                label="Seksi Penanggung Jawab"
+                label="Seksi"
                 value={formData.section_id}
                 options={sections.map((s) => ({ value: s.id, label: s.name }))}
                 onChange={(e) => set('section_id', e.target.value)}
               />
             </Section>
 
-            {/* WAKTU & LOKASI (Desktop: 6 cols / 50%) */}
+            {/* WAKTU & LOKASI */}
             <Section
               title="Waktu & Lokasi"
-              description="Jadwal waktu mulai, target selesai, dan tempat pelaksanaan agenda."
               icon={<HeroClock className="w-5 h-5" />}
               columns={1}
               className="lg:col-span-6"
@@ -217,13 +215,13 @@ export const AgendaCreatePage: React.FC = () => {
               />
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Input
-                  label="Lokasi / Ruangan"
+                  label="Lokasi"
                   value={formData.location}
                   onChange={(e) => set('location', e.target.value)}
-                  placeholder="Contoh: Ruang Seminar Utama Lt. 3"
+                  placeholder="Ruang Seminar Utama"
                 />
                 <NumberInput
-                  label="Estimasi Kebutuhan Anggaran"
+                  label="Estimasi Anggaran"
                   prefix="Rp"
                   value={formData.budget_estimated}
                   onChange={(val) => set('budget_estimated', val || 0)}
@@ -231,10 +229,9 @@ export const AgendaCreatePage: React.FC = () => {
               </div>
             </Section>
 
-            {/* DESKRIPSI & SUSUNAN ACARA (Desktop: 12 cols / 100%) */}
+            {/* DESKRIPSI & SUSUNAN ACARA */}
             <Section
-              title="Deskripsi & Susunan Acara"
-              description="Rundown, sasaran peserta, dan catatan teknis pelaksanaan agenda."
+              title="Rincian"
               icon={<HeroDocumentText className="w-5 h-5" />}
               columns={1}
               className="col-span-full"

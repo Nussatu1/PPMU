@@ -22,6 +22,7 @@ import {
   HeroUser,
   HeroXMark,
   HeroTrash,
+  HeroPencilSquare,
 } from '@/components/icons/HeroIcons'
 
 export const TaskListPage: React.FC = () => {
@@ -32,12 +33,15 @@ export const TaskListPage: React.FC = () => {
 
   const [tasks, setTasks] = useState<Task[]>([])
   const [personnels, setPersonnels] = useState<Personnel[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  const [isLoading, setIsLoading] = useState(false)
 
   const orgId = currentOrganization?.id || ''
 
   const loadData = useCallback(async () => {
-    if (!orgId) return
+    if (!orgId) {
+      setIsLoading(false)
+      return
+    }
     setIsLoading(true)
     try {
       const [tsks, prss] = await Promise.all([
@@ -92,21 +96,27 @@ export const TaskListPage: React.FC = () => {
   }
 
   const handleBulkDelete = async (ids: string[]) => {
+    if (ids.length === 0) return
     const ok = await confirm({
       title: 'Hapus Tugas Terpilih',
-      message: `Yakin ingin menghapus ${ids.length} tugas terpilih?`,
+      message: `Yakin ingin menghapus ${ids.length} tugas terpilih? Tindakan ini tidak dapat dibatalkan.`,
       tone: 'danger',
-      confirmLabel: 'Hapus Semua',
+      confirmLabel: `Hapus ${ids.length} Tugas`,
     })
     if (!ok) return
-    try {
-      await Promise.all(ids.map((id) => dataService.deleteTask(id, user)))
-      success('Tugas Dihapus', `${ids.length} tugas berhasil dihapus.`)
-      loadData()
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Gagal menghapus beberapa tugas'
-      error('Gagal', msg)
+    let deleted = 0
+    const errs: string[] = []
+    for (const id of ids) {
+      try {
+        await dataService.deleteTask(id, user)
+        deleted++
+      } catch {
+        errs.push(id)
+      }
     }
+    if (deleted > 0) success('Tugas Dihapus', `${deleted} tugas berhasil dihapus.`)
+    if (errs.length > 0) error('Sebagian Gagal', `${errs.length} tugas tidak dapat dihapus (tidak ada izin atau sudah dihapus).`)
+    loadData()
   }
 
   const getPriorityBadge = (priority: Task['priority']) => {
@@ -159,7 +169,7 @@ export const TaskListPage: React.FC = () => {
   const columns: ColumnDef<Task>[] = [
     {
       key: 'title',
-      label: 'Tugas & Uraian Tindak Lanjut',
+      label: 'Tugas',
       sortable: true,
       mobilePriority: 'primary',
       render: (t) => (
@@ -183,14 +193,14 @@ export const TaskListPage: React.FC = () => {
     },
     {
       key: 'priority',
-      label: 'Tingkat Prioritas',
+      label: 'Prioritas',
       sortable: true,
       mobilePriority: 'secondary',
       render: (t) => getPriorityBadge(t.priority),
     },
     {
       key: 'pic_personnel_id',
-      label: 'PIC Personel',
+      label: 'PIC',
       mobilePriority: 'secondary',
       render: (t) => {
         const prs = personnels.find((p) => p.id === t.pic_personnel_id)
@@ -207,7 +217,7 @@ export const TaskListPage: React.FC = () => {
     },
     {
       key: 'due_date',
-      label: 'Tenggat Waktu',
+      label: 'Tenggat',
       sortable: true,
       mobilePriority: 'secondary',
       render: (t) => (
@@ -221,14 +231,14 @@ export const TaskListPage: React.FC = () => {
     },
     {
       key: 'status',
-      label: 'Status Pengerjaan',
+      label: 'Status',
       sortable: true,
       mobilePriority: 'status',
       render: (t) => getStatusBadge(t.status),
     },
     {
       key: 'id',
-      label: 'Tindakan Personel',
+      label: 'Aksi',
       mobilePriority: 'detail',
       render: (t) => (
         <div className="flex items-center gap-1.5 flex-wrap">
@@ -286,6 +296,15 @@ export const TaskListPage: React.FC = () => {
               <HeroCheck className="w-4 h-4" /> Selesai
             </span>
           )}
+
+          <button
+            type="button"
+            onClick={() => navigate(`/tasks/${t.id}/edit`)}
+            className="ml-1 inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-primary-600 dark:text-primary-400 bg-primary-500/10 hover:bg-primary-500/20 rounded-lg transition-colors cursor-pointer"
+          >
+            <HeroPencilSquare className="w-3.5 h-3.5" />
+            Edit
+          </button>
         </div>
       ),
     },
@@ -365,6 +384,11 @@ export const TaskListPage: React.FC = () => {
       })
     }
     menuActions.push({
+      label: 'Edit Tugas',
+      icon: <HeroPencilSquare className="w-4 h-4" />,
+      onClick: () => navigate(`/tasks/${task.id}/edit`),
+    })
+    menuActions.push({
       label: 'Hapus Tugas',
       icon: <HeroTrash className="w-4 h-4 text-red-500" />,
       onClick: () => handleDelete(task),
@@ -430,7 +454,7 @@ export const TaskListPage: React.FC = () => {
           <OrganizationScopeSwitcher size="sm" />
           <Button variant="primary" onClick={() => navigate('/tasks/create')} className="shrink-0 self-start sm:self-auto">
             <HeroPlus className="w-4 h-4 mr-2" />
-            Tambah Tugas
+            Tambah
           </Button>
         </div>
       </div>

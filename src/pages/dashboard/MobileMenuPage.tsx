@@ -2,6 +2,7 @@ import React from 'react'
 import { useNavigate } from 'react-router-dom'
 import { PageContainer } from '@/components/layout/PageContainer'
 import { useAuth } from '@/context/AuthContext'
+import { hasPermission, hasPageAccess } from '@/lib/authorization'
 import { ALL_NAVIGATION_MODULES, type NavigationModule } from '@/lib/navigation'
 import { cn } from '@/lib/utils'
 
@@ -10,13 +11,30 @@ export const MobileMenuPage: React.FC = () => {
   const { user } = useAuth()
   const isSuperAdmin = !!(user?.is_superadmin || user?.role === 'superadmin')
 
-  // Group 1: Ekosistem Organisasi (Operasional Harian)
-  const organisasiModules = ALL_NAVIGATION_MODULES.filter((m) => m.group === 'organisasi')
+  // Group 1: Ekosistem Organisasi (Operasional Harian) difilter izin riil
+  const organisasiModules = ALL_NAVIGATION_MODULES.filter((m) => {
+    if (m.group !== 'organisasi') return false
+    if (isSuperAdmin) return true
+    if (m.id === 'structures') return hasPermission(user, 'Structure', 'viewAny')
+    if (m.id === 'programs') return hasPermission(user, 'Program', 'viewAny')
+    if (m.id === 'agendas') return hasPermission(user, 'Agenda', 'viewAny')
+    if (m.id === 'performance') return hasPermission(user, 'Performance', 'viewAny')
+    if (m.id === 'finance') return hasPermission(user, 'Finance', 'viewAny')
+    if (m.id === 'reports') return hasPermission(user, 'Report', 'viewAny')
+    if (m.id === 'tasks') return hasPermission(user, 'Task', 'viewAny')
+    return false
+  })
 
-  // Group 2: Tata Kelola Sistem (Khusus Superadmin)
-  const sistemModules = isSuperAdmin
-    ? ALL_NAVIGATION_MODULES.filter((m) => m.group === 'sistem')
-    : []
+  // Group 2: Tata Kelola Sistem difilter izin riil
+  const sistemModules = ALL_NAVIGATION_MODULES.filter((m) => {
+    if (m.group !== 'sistem') return false
+    if (isSuperAdmin) return true
+    if (m.id === 'accounts') return hasPermission(user, 'Admin', 'viewAny')
+    if (m.id === 'roles') return hasPageAccess(user, 'Shield') || hasPermission(user, 'Role', 'viewAny')
+    if (m.id === 'audit') return hasPermission(user, 'Audit', 'viewAny')
+    if (m.id === 'settings') return hasPageAccess(user, 'Settings')
+    return false
+  })
 
   const renderModuleGrid = (items: NavigationModule[]) => (
     <div className="grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-7 gap-y-3.5 gap-x-2 py-1">
@@ -57,15 +75,12 @@ export const MobileMenuPage: React.FC = () => {
   return (
     <PageContainer variant="wide">
       <div className="space-y-6 pt-1 pb-[max(5rem,calc(4rem+env(safe-area-inset-bottom)))]">
-        {/* Section 1: Ekosistem Organisasi */}
+        {/* Section 1: Ekosistem Jabatan & Kinerja */}
         <div className="space-y-2">
           <div className="px-1">
             <h2 className="text-xs font-bold uppercase tracking-wider text-fg-muted">
-              Ekosistem Organisasi
+              Jabatan & Kinerja
             </h2>
-            <p className="text-[11px] text-fg-subtle mt-0.5">
-              Modul operasional dan siklus kinerja harian
-            </p>
           </div>
           {renderModuleGrid(organisasiModules)}
         </div>
@@ -75,11 +90,8 @@ export const MobileMenuPage: React.FC = () => {
           <div className="space-y-2 pt-2 border-t border-line-divider">
             <div className="px-1">
               <h2 className="text-xs font-bold uppercase tracking-wider text-fg-muted">
-                Tata Kelola Sistem
+                Sistem
               </h2>
-              <p className="text-[11px] text-fg-subtle mt-0.5">
-                Administrasi organisasi, otorisasi, dan audit
-              </p>
             </div>
             {renderModuleGrid(sistemModules)}
           </div>

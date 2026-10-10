@@ -97,7 +97,7 @@ export const AuditLogListPage: React.FC = () => {
   const columns: ColumnDef<AuditLog>[] = [
     {
       key: 'created_at',
-      label: 'Waktu Kejadian',
+      label: 'Waktu',
       sortable: true,
       render: (log) => (
         <span className="text-xs text-fg font-mono">
@@ -114,7 +114,7 @@ export const AuditLogListPage: React.FC = () => {
     },
     {
       key: 'user_name',
-      label: 'Pelaku Aktivitas',
+      label: 'Pengguna',
       sortable: true,
       render: (log) => (
         <div>
@@ -125,7 +125,7 @@ export const AuditLogListPage: React.FC = () => {
     },
     {
       key: 'action',
-      label: 'Aksi Otorisasi',
+      label: 'Aksi',
       sortable: true,
       render: (log) => (
         <Badge variant={actionVariant(log.action)} dot>
@@ -135,7 +135,7 @@ export const AuditLogListPage: React.FC = () => {
     },
     {
       key: 'resource',
-      label: 'Target Modul',
+      label: 'Modul',
       sortable: true,
       render: (log) => (
         <div>
@@ -148,7 +148,7 @@ export const AuditLogListPage: React.FC = () => {
     },
     {
       key: 'id',
-      label: 'Detail Payload',
+      label: 'Diff',
       render: (log) => (
         <Button
           size="xs"
@@ -156,7 +156,7 @@ export const AuditLogListPage: React.FC = () => {
           onClick={() => setSelectedLog(log)}
           icon={<HeroEye className="w-4 h-4 text-amber-500" />}
         >
-          Lihat Diff
+          Diff
         </Button>
       ),
     },
@@ -168,7 +168,7 @@ export const AuditLogListPage: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-fg flex items-center gap-2.5">
           <HeroClock className="w-6 h-6 text-amber-500" />
-          Jejak Audit
+          Audit Log
         </h1>
 
         {logs.length > 0 && (

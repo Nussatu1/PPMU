@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Outlet, Navigate } from 'react-router-dom'
+import { Outlet, Navigate, useLocation } from 'react-router-dom'
 import { Sidebar } from './Sidebar'
 import { Topbar } from './Topbar'
 import { MobileAppHeader } from './MobileAppHeader'
@@ -12,6 +12,8 @@ export const AdminLayout: React.FC = () => {
   const { isAuthenticated, isLoading } = useAuth()
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
   const [isGlobalSearchOpen, setIsGlobalSearchOpen] = useState(false)
+  const location = useLocation()
+  const isDashboardFullscreen = location.pathname === '/'
 
   if (isLoading) {
     return (
@@ -25,8 +27,22 @@ export const AdminLayout: React.FC = () => {
     return <Navigate to="/login" replace />
   }
 
+  // Jika halaman adalah Dashboard ('/'), render mandiri dalam mode Fullscreen (sesuai Demos/preview-wealth-dashboard.html)
+  if (isDashboardFullscreen) {
+    return (
+      <div className="min-h-screen w-full relative bg-[#080c0e] text-white selection:bg-emerald-400 selection:text-black antialiased overflow-x-hidden">
+        <Outlet />
+        <GlobalSearchModal
+          isOpen={isGlobalSearchOpen}
+          onClose={() => setIsGlobalSearchOpen(false)}
+        />
+        <HelpDrawer />
+      </div>
+    )
+  }
+
   return (
-    <div className="min-h-screen flex antialiased bg-surface-muted">
+    <div className="min-h-screen lg:h-screen lg:overflow-hidden flex antialiased bg-surface-muted">
       {/* Desktop Persistent Sidebar (>= lg) */}
       <Sidebar
         isMobileOpen={false}
@@ -36,7 +52,7 @@ export const AdminLayout: React.FC = () => {
       />
 
       {/* Main column */}
-      <div className="flex flex-col flex-1 min-w-0 w-full transition-all duration-300 ease-in-out">
+      <div className="flex flex-col flex-1 min-w-0 w-full lg:h-screen lg:overflow-y-auto transition-all duration-300 ease-in-out">
         {/* Desktop topbar (>= lg) */}
         <Topbar
           isSidebarCollapsed={isSidebarCollapsed}

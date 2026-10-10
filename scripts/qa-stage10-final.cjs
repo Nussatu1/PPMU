@@ -64,9 +64,9 @@ async function runStage10() {
 
   try {
     // -------------------------------------------------------------
-    // PHASE 2: DEMO DATA SANITY
+    // PHASE 2: DEMO DATA SANITY (EMPTY OPERATIONAL STATE)
     // -------------------------------------------------------------
-    log('--- Phase 2: Demo Data Sanity ---');
+    log('--- Phase 2: Demo Data Sanity (Clean Empty Operational State) ---');
     await page.goto(`${BASE}/programs`, { waitUntil: 'domcontentloaded' });
     await page.waitForFunction(() => typeof window.dataService !== 'undefined', { timeout: 10000 });
 
@@ -80,17 +80,17 @@ async function runStage10() {
       const progsB = await window.dataService.getPrograms({ organizationId: orgA, mode: 'own' });
 
       return {
-        hasProgsA: progsA.length > 0,
-        hasBudgetsA: budgetsA.length > 0,
+        isProgsAEmpty: progsA.length === 0,
+        isBudgetsAEmpty: budgetsA.length === 0,
         hasOrgs: orgs.length > 0,
-        hasProgsB: progsB.length > 0,
+        isProgsBEmpty: progsB.length === 0,
         progsCountA: progsA.length,
         progsCountB: progsB.length,
       };
     }, ACC_A, ACC_B, ORG_ROOT, ORG_LEMBAGA_A);
 
-    report.demoDataSanity = sanity.hasProgsA && sanity.hasBudgetsA && sanity.hasOrgs && sanity.hasProgsB;
-    log(`Phase 2 Result: Demo Data Sanity = ${report.demoDataSanity ? 'PASS' : 'FAIL'} (ProgsA=${sanity.progsCountA}, ProgsB=${sanity.progsCountB})`);
+    report.demoDataSanity = sanity.isProgsAEmpty && sanity.isBudgetsAEmpty && sanity.hasOrgs && sanity.isProgsBEmpty;
+    log(`Phase 2 Result: Demo Data Sanity = ${report.demoDataSanity ? 'PASS' : 'FAIL'} (Clean empty operational data confirmed: ProgsA=${sanity.progsCountA}, ProgsB=${sanity.progsCountB}, Master Orgs=${sanity.hasOrgs})`);
 
     // -------------------------------------------------------------
     // PHASE 3: LOGIN / LOGOUT DEMO FLOW
@@ -243,6 +243,9 @@ async function runStage10() {
         organization_id: orgRoot,
         title: 'Stage 10 Verified Program',
         name: 'Stage 10 Verified Program',
+        duration_type: 'terbatas',
+        start_date: '2026-01-01',
+        end_date: '2026-12-31',
         status: 'draft',
         budget_allocated: 15000000,
         budget_planned: 15000000,
@@ -306,31 +309,56 @@ async function runStage10() {
     report.crudDemo.finance = financeCrud.pass && financeRefresh;
     log(`CRUD Finance: ${report.crudDemo.finance ? 'PASS' : 'FAIL'}`);
 
-    // 4. Agenda Read/Detail
-    const agendaRead = await page.evaluate(async (accA, orgRoot) => {
+    // 4. Agenda Create & Read
+    const agendaCrud = await page.evaluate(async (accA, orgRoot, progId) => {
       window.dataService.setActiveAccount(accA);
+      const created = await window.dataService.createAgenda({
+        organization_id: orgRoot,
+        program_id: progId,
+        title: 'Stage 10 Verified Agenda',
+        start_time: '2026-10-01T09:00:00Z',
+        end_time: '2026-10-01T11:00:00Z',
+        status: 'planned',
+      });
       const agendas = await window.dataService.getAgendas({ organizationId: orgRoot, mode: 'descendants' });
-      return agendas.length > 0;
-    }, ACC_A, ORG_ROOT);
-    report.crudDemo.agenda = agendaRead;
+      return { pass: agendas.some(a => a.id === created.id), id: created.id };
+    }, ACC_A, ORG_ROOT, progCrud.id);
+    report.crudDemo.agenda = agendaCrud.pass;
     log(`Agenda Detail/Read: ${report.crudDemo.agenda ? 'PASS' : 'FAIL'}`);
 
-    // 5. Performance Read/Detail
-    const perfRead = await page.evaluate(async (accA, orgRoot) => {
+    // 5. Performance Create & Read
+    const perfCrud = await page.evaluate(async (accA, orgRoot, progId) => {
       window.dataService.setActiveAccount(accA);
+      const created = await window.dataService.createPerformance({
+        organization_id: orgRoot,
+        program_id: progId,
+        kpi_name: 'Stage 10 Verified KPI',
+        target: 100,
+        realized: 85,
+        period: 'Q3 2026',
+        unit: '%',
+      });
       const perfs = await window.dataService.getPerformances({ organizationId: orgRoot, mode: 'descendants' });
-      return perfs.length > 0;
-    }, ACC_A, ORG_ROOT);
-    report.crudDemo.performance = perfRead;
+      return { pass: perfs.some(p => p.id === created.id), id: created.id };
+    }, ACC_A, ORG_ROOT, progCrud.id);
+    report.crudDemo.performance = perfCrud.pass;
     log(`Performance Read: ${report.crudDemo.performance ? 'PASS' : 'FAIL'}`);
 
-    // 6. Report Read/Detail
-    const reportRead = await page.evaluate(async (accA, orgRoot) => {
+    // 6. Report Create & Read
+    const reportCrud = await page.evaluate(async (accA, orgRoot, progId) => {
       window.dataService.setActiveAccount(accA);
+      const created = await window.dataService.createReport({
+        organization_id: orgRoot,
+        program_id: progId,
+        title: 'Stage 10 Verified Report',
+        period: 'Bulan Oktober 2026',
+        content: 'Laporan Stage 10 verified',
+        status: 'draft',
+      });
       const reports = await window.dataService.getReports({ organizationId: orgRoot, mode: 'descendants' });
-      return reports.length > 0;
-    }, ACC_A, ORG_ROOT);
-    report.crudDemo.report = reportRead;
+      return { pass: reports.some(r => r.id === created.id), id: created.id };
+    }, ACC_A, ORG_ROOT, progCrud.id);
+    report.crudDemo.report = reportCrud.pass;
     log(`Report Read: ${report.crudDemo.report ? 'PASS' : 'FAIL'}`);
 
     // 7. Structure Read/Detail
@@ -354,6 +382,9 @@ async function runStage10() {
         organization_id: orgRoot,
         title: 'Demo Final A - Isolation Test',
         name: 'Demo Final A - Isolation Test',
+        duration_type: 'terbatas',
+        start_date: '2026-01-01',
+        end_date: '2026-12-31',
         status: 'draft',
         budget_allocated: 10000000,
         budget_planned: 10000000,
@@ -397,6 +428,9 @@ async function runStage10() {
         organization_id: orgA,
         title: 'Demo Final B - Isolation Test',
         name: 'Demo Final B - Isolation Test',
+        duration_type: 'terbatas',
+        start_date: '2026-01-01',
+        end_date: '2026-12-31',
         status: 'draft',
         budget_allocated: 12000000,
         budget_planned: 12000000,

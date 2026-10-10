@@ -85,6 +85,16 @@ const ROUTES = [
     // -------------------------------------------------------------
     console.log('--- 1. VIEWPORT META TAG AUDIT ---');
     await page.goto(`${BASE}/`, { waitUntil: 'networkidle0', timeout: 15000 }).catch(() => {});
+    await page.evaluate(() => {
+      sessionStorage.setItem('filament_bakid_auth_user', JSON.stringify({
+        id: 'user-superadmin',
+        name: 'Superadmin',
+        email: 'superadmin@pesantren.id',
+        role: 'superadmin',
+        is_superadmin: true,
+        status: 'active'
+      }));
+    });
     const viewportMeta = await page.evaluate(() => {
       const metas = Array.from(document.querySelectorAll('meta[name="viewport"]'));
       return {

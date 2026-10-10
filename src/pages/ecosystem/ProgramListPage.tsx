@@ -9,6 +9,7 @@ import { useToast } from '@/context/ToastContext'
 import { useConfirm } from '@/context/ConfirmContext'
 import { useAuth } from '@/context/AuthContext'
 import { dataService } from '@/lib/dataService'
+import { canApproveProgram } from '@/lib/authorization'
 import { formatCurrency } from '@/lib/utils'
 import type { Program, Personnel, ProgramStatus } from '@/types/database'
 import {
@@ -28,13 +29,13 @@ import {
 
 export const ProgramListPage: React.FC = () => {
   const navigate = useNavigate()
-  const { user, currentOrganization, currentScopeMode } = useAuth()
+  const { user, currentOrganization, userOrganizations, currentScopeMode } = useAuth()
   const { success, error } = useToast()
   const { confirm } = useConfirm()
 
   const [programs, setPrograms] = useState<Program[]>([])
   const [personnels, setPersonnels] = useState<Personnel[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  const [isLoading, setIsLoading] = useState(false)
 
   // Status Filter State
   const [filterStatus, setFilterStatus] = useState<string>('all')
@@ -42,7 +43,10 @@ export const ProgramListPage: React.FC = () => {
   const orgId = currentOrganization?.id || ''
 
   const loadData = useCallback(async () => {
-    if (!orgId) return
+    if (!orgId) {
+      setIsLoading(false)
+      return
+    }
     setIsLoading(true)
     try {
       const [progs, prss] = await Promise.all([
@@ -96,7 +100,7 @@ export const ProgramListPage: React.FC = () => {
     const config: Record<ProgramStatus, { variant: 'gray' | 'primary' | 'success' | 'warning' | 'danger'; label: string }> = {
       draft: { variant: 'gray', label: 'Konsep (Draft)' },
       submitted: { variant: 'warning', label: 'Diajukan' },
-      approved: { variant: 'primary', label: 'Disetujui Ketua' },
+      approved: { variant: 'primary', label: 'Disetujui' },
       active: { variant: 'success', label: 'Sedang Berjalan' },
       completed: { variant: 'success', label: 'Selesai' },
       closed: { variant: 'gray', label: 'Ditutup' },
@@ -122,7 +126,7 @@ export const ProgramListPage: React.FC = () => {
   const columns: ColumnDef<Program>[] = [
     {
       key: 'title',
-      label: 'Program Kerja & Divisi',
+      label: 'Program',
       sortable: true,
       mobilePriority: 'primary',
       render: (prog) => (
@@ -151,7 +155,7 @@ export const ProgramListPage: React.FC = () => {
     },
     {
       key: 'budget_allocated',
-      label: 'Alokasi & Realisasi Anggaran',
+      label: 'Anggaran',
       sortable: true,
       mobilePriority: 'primary',
       render: (prog) => {
@@ -181,7 +185,7 @@ export const ProgramListPage: React.FC = () => {
     },
     {
       key: 'pic_personnel_id',
-      label: 'PIC Struktur',
+      label: 'PIC',
       mobilePriority: 'secondary',
       render: (prog) => {
         const prs = personnels.find((p) => p.id === prog.pic_personnel_id) || prog.pic_personnel
@@ -212,10 +216,26 @@ export const ProgramListPage: React.FC = () => {
     },
     {
       key: 'status',
-      label: 'Status Siklus',
+      label: 'Status',
       sortable: true,
       mobilePriority: 'status',
-      render: (prog) => getStatusBadge(prog.status),
+      render: (prog) => {
+        const durationTypeLabels: Record<string, { label: string; color: string }> = {
+          terbatas: { label: 'Terbatas', color: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300' },
+          jangka_panjang: { label: 'Jangka Panjang', color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300' },
+          rutin: { label: 'Berkelanjutan', color: 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300' },
+        }
+        const dt = durationTypeLabels[prog.duration_type || 'terbatas'] || durationTypeLabels.terbatas
+
+        return (
+          <div className="flex flex-col gap-1 items-start">
+            {getStatusBadge(prog.status)}
+            <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold ${dt.color}`}>
+              {dt.label}
+            </span>
+          </div>
+        )
+      },
     },
     {
       key: 'id',
@@ -234,7 +254,7 @@ export const ProgramListPage: React.FC = () => {
             </Button>
           )}
 
-          {prog.status === 'submitted' && (
+          {prog.status === 'submitted' && canApproveProgram(user, prog, userOrganizations) && (
             <Button
               size="xs"
               variant="secondary"
@@ -243,6 +263,12 @@ export const ProgramListPage: React.FC = () => {
             >
               Setujui
             </Button>
+          )}
+
+          {prog.status === 'submitted' && !canApproveProgram(user, prog, userOrganizations) && (
+            <span className="text-xs text-amber-600 dark:text-amber-400 font-medium italic">
+              Menunggu Persetujuan
+            </span>
           )}
 
           {prog.status === 'approved' && (
@@ -256,18 +282,34 @@ export const ProgramListPage: React.FC = () => {
           )}
 
           {prog.status === 'active' && (
-            <Button
-              size="xs"
-              variant="secondary"
-              onClick={() => handleTransitionStatus(prog, 'completed')}
-            >
-              Selesaikan
-            </Button>
+            prog.duration_type === 'rutin' ? (
+              <Button
+                size="xs"
+                variant="secondary"
+                onClick={() => handleTransitionStatus(prog, 'closed')}
+              >
+                Tutup Program
+              </Button>
+            ) : (
+              <Button
+                size="xs"
+                variant="secondary"
+                onClick={() => handleTransitionStatus(prog, 'completed')}
+              >
+                Selesaikan
+              </Button>
+            )
           )}
 
           {prog.status === 'completed' && (
             <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">
               Tercapai
+            </span>
+          )}
+
+          {prog.status === 'closed' && (
+            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+              Selesai Ditutup
             </span>
           )}
         </div>
@@ -294,15 +336,23 @@ export const ProgramListPage: React.FC = () => {
         </button>
       )
     } else if (prog.status === 'submitted') {
-      primaryActionNode = (
-        <button
-          type="button"
-          onClick={() => handleTransitionStatus(prog, 'approved')}
-          className="w-full min-h-[44px] px-4 py-2 text-sm font-semibold rounded-xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white transition-colors cursor-pointer flex items-center justify-center gap-1.5 shadow-xs"
-        >
-          <HeroCheck className="w-4 h-4" /> Setujui Program
-        </button>
-      )
+      if (canApproveProgram(user, prog, userOrganizations)) {
+        primaryActionNode = (
+          <button
+            type="button"
+            onClick={() => handleTransitionStatus(prog, 'approved')}
+            className="w-full min-h-[44px] px-4 py-2 text-sm font-semibold rounded-xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white transition-colors cursor-pointer flex items-center justify-center gap-1.5 shadow-xs"
+          >
+            <HeroCheck className="w-4 h-4" /> Setujui Program
+          </button>
+        )
+      } else {
+        primaryActionNode = (
+          <div className="w-full min-h-[44px] px-4 py-2 text-xs font-medium rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center gap-1.5">
+            Menunggu Persetujuan Atasan
+          </div>
+        )
+      }
     } else if (prog.status === 'approved') {
       primaryActionNode = (
         <button
@@ -314,7 +364,15 @@ export const ProgramListPage: React.FC = () => {
         </button>
       )
     } else if (prog.status === 'active') {
-      primaryActionNode = (
+      primaryActionNode = prog.duration_type === 'rutin' ? (
+        <button
+          type="button"
+          onClick={() => handleTransitionStatus(prog, 'closed')}
+          className="w-full min-h-[44px] px-4 py-2 text-sm font-semibold rounded-xl bg-slate-700 hover:bg-slate-800 active:bg-slate-900 text-white transition-colors cursor-pointer flex items-center justify-center shadow-xs"
+        >
+          Tutup Program
+        </button>
+      ) : (
         <button
           type="button"
           onClick={() => handleTransitionStatus(prog, 'completed')}
@@ -327,6 +385,12 @@ export const ProgramListPage: React.FC = () => {
       primaryActionNode = (
         <div className="flex items-center justify-center min-h-[44px] text-xs font-semibold text-emerald-600 dark:text-emerald-400 gap-1.5">
           <HeroCheck className="w-4 h-4" /> Tercapai
+        </div>
+      )
+    } else if (prog.status === 'closed') {
+      primaryActionNode = (
+        <div className="flex items-center justify-center min-h-[44px] text-xs font-semibold text-slate-500 dark:text-slate-400 gap-1.5">
+          Selesai Ditutup
         </div>
       )
     }
@@ -345,6 +409,13 @@ export const ProgramListPage: React.FC = () => {
       },
     ]
 
+    const durationTypeLabels: Record<string, { label: string; color: string }> = {
+      terbatas: { label: 'Terbatas', color: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300' },
+      jangka_panjang: { label: 'Jangka Panjang', color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300' },
+      rutin: { label: 'Berkelanjutan', color: 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300' },
+    }
+    const dt = durationTypeLabels[prog.duration_type || 'terbatas'] || durationTypeLabels.terbatas
+
     return (
       <MobileCard
         title={
@@ -357,7 +428,14 @@ export const ProgramListPage: React.FC = () => {
             )}
           </div>
         }
-        subtitle={prog.section?.name || 'Seksi Terkait'}
+        subtitle={
+          <div className="flex items-center gap-2">
+            <span>{prog.section?.name || 'Seksi Terkait'}</span>
+            <span className={`inline-block px-1.5 py-0.2 rounded text-[10px] font-semibold ${dt.color}`}>
+              {dt.label}
+            </span>
+          </div>
+        }
         status={getStatusBadge(prog.status)}
         meta={
           <>
@@ -429,7 +507,7 @@ export const ProgramListPage: React.FC = () => {
             onClick={() => navigate('/programs/create')}
             className="shrink-0 self-start sm:self-auto"
           >
-            Tambah Program
+            Tambah
           </Button>
         </div>
       </div>

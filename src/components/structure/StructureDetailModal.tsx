@@ -4,9 +4,6 @@ import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import type { Personnel, Section } from '@/types/database'
 import {
-  HeroPencilSquare,
-  HeroTrash,
-  HeroPlus,
   HeroUser,
   HeroFolder,
   HeroChevronRight,
@@ -21,9 +18,6 @@ export interface StructureDetailModalProps {
   personnel: Personnel | null
   allPersonnels: Personnel[]
   sections: Section[]
-  onEdit: (prs: Personnel) => void
-  onDelete: (prs: Personnel) => void
-  onAddSubordinate: (parentPrs: Personnel) => void
   onSelectNode: (prs: Personnel) => void
 }
 
@@ -70,9 +64,6 @@ export const StructureDetailModal: React.FC<StructureDetailModalProps> = ({
   personnel,
   allPersonnels,
   sections,
-  onEdit,
-  onDelete,
-  onAddSubordinate,
   onSelectNode,
 }) => {
   if (!personnel) return null
@@ -98,34 +89,14 @@ export const StructureDetailModal: React.FC<StructureDetailModalProps> = ({
       title="Detail Jabatan & Tupoksi"
       size="2xl"
       footer={
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 w-full">
+        <div className="flex items-center justify-end w-full">
           <Button
             type="button"
-            variant="danger"
-            onClick={() => onDelete(personnel)}
-            icon={<HeroTrash className="w-4 h-4" />}
+            variant="secondary"
+            onClick={onClose}
           >
-            Hapus Jabatan
+            Tutup
           </Button>
-
-          <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => onAddSubordinate(personnel)}
-              icon={<HeroPlus className="w-4 h-4" />}
-            >
-              Tambah Bawahan
-            </Button>
-            <Button
-              type="button"
-              variant="primary"
-              onClick={() => onEdit(personnel)}
-              icon={<HeroPencilSquare className="w-4 h-4" />}
-            >
-              Edit Jabatan & Tupoksi
-            </Button>
-          </div>
         </div>
       }
     >
@@ -295,14 +266,6 @@ export const StructureDetailModal: React.FC<StructureDetailModalProps> = ({
               <span className="text-[11px] font-bold uppercase tracking-wider text-fg-muted">
                 Bawahan Langsung ({subordinates.length})
               </span>
-              <button
-                type="button"
-                onClick={() => onAddSubordinate(personnel)}
-                className="text-[11px] font-semibold text-amber-600 dark:text-amber-400 hover:underline flex items-center gap-0.5 cursor-pointer"
-              >
-                <HeroPlus className="w-3.5 h-3.5" />
-                Tambah Bawahan
-              </button>
             </div>
 
             {subordinates.length > 0 ? (

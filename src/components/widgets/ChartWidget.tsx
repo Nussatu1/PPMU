@@ -1,5 +1,5 @@
 import { useTheme } from '@/context/ThemeContext'
-import React, { useState } from 'react'
+import React, { useState, useMemo } from 'react'
 import {
   AreaChart,
   Area,
@@ -12,26 +12,64 @@ import {
 import { Card } from '@/components/ui/Card'
 import { formatCurrency } from '@/lib/utils'
 import { t } from '@/i18n'
+import type { Transaction, Agenda } from '@/types/database'
 
-const monthlyData = [
-  { month: 'Jan', budget: 12500000, activities: 4 },
-  { month: 'Feb', budget: 18000000, activities: 6 },
-  { month: 'Mar', budget: 24500000, activities: 8 },
-  { month: 'Apr', budget: 16000000, activities: 5 },
-  { month: 'Mei', budget: 22000000, activities: 7 },
-  { month: 'Jun', budget: 31000000, activities: 10 },
-  { month: 'Jul', budget: 28000000, activities: 9 },
-  { month: 'Agu', budget: 35000000, activities: 11 },
-  { month: 'Sep', budget: 29500000, activities: 8 },
-  { month: 'Okt', budget: 38000000, activities: 12 },
-  { month: 'Nov', budget: 42000000, activities: 14 },
-  { month: 'Des', budget: 48000000, activities: 15 },
-]
+export interface MonthlyDataPoint {
+  month: string
+  budget: number
+  activities: number
+}
 
-export const ChartWidget: React.FC = () => {
+const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des']
+
+interface ChartWidgetProps {
+  data?: MonthlyDataPoint[]
+  transactions?: Transaction[]
+  agendas?: Agenda[]
+}
+
+export const ChartWidget: React.FC<ChartWidgetProps> = ({
+  data: customData,
+  transactions = [],
+  agendas = [],
+}) => {
   const { theme } = useTheme()
   const isDark = theme === 'dark'
   const [metric, setMetric] = useState<'budget' | 'activities'>('budget')
+
+  const chartData: MonthlyDataPoint[] = useMemo(() => {
+    if (customData && customData.length > 0) return customData
+
+    // Hitung data bulanan dari transaksi & agenda riil sistem
+    return MONTH_LABELS.map((mLabel, idx) => {
+      let budgetMonth = 0
+      let activitiesMonth = 0
+
+      // Filter transaksi pada bulan ini (indeks 0..11)
+      transactions.forEach((tx) => {
+        if (!tx.date) return
+        const d = new Date(tx.date)
+        if (!isNaN(d.getTime()) && d.getMonth() === idx) {
+          budgetMonth += tx.amount || 0
+        }
+      })
+
+      // Filter agenda tuntas pada bulan ini
+      agendas.forEach((ag) => {
+        if (!ag.date) return
+        const d = new Date(ag.date)
+        if (!isNaN(d.getTime()) && d.getMonth() === idx) {
+          activitiesMonth += 1
+        }
+      })
+
+      return {
+        month: mLabel,
+        budget: budgetMonth,
+        activities: activitiesMonth,
+      }
+    })
+  }, [customData, transactions, agendas])
 
   const gridStroke = 'var(--color-chart-grid)'
   const axisStroke = 'var(--color-chart-axis)'
@@ -89,7 +127,7 @@ export const ChartWidget: React.FC = () => {
 
       <div className="h-36 sm:h-72 w-full">
         <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={monthlyData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+          <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
             <defs>
               <linearGradient id="colorMetric" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%" stopColor="rgb(var(--fi-primary-500))" stopOpacity={0.35} />

@@ -30,13 +30,13 @@ export const OrganizationScopeSwitcher: React.FC<OrganizationScopeSwitcherProps>
   return (
     <div
       role="group"
-      aria-label="Cakupan Data Organisasi"
+      aria-label="Cakupan Data Jabatan"
       className={cn(
         'inline-flex items-center rounded-xl bg-surface-muted/80 p-1 border border-line select-none shadow-2xs',
         className
       )}
     >
-      {/* Mode 1: Unit Ini (Own) */}
+      {/* Mode 1: Jabatan Ini (Own) */}
       <button
         type="button"
         onClick={() => setScopeMode('own')}
@@ -50,10 +50,10 @@ export const OrganizationScopeSwitcher: React.FC<OrganizationScopeSwitcherProps>
         )}
       >
         <HeroBuildingOffice className={cn('shrink-0', isSmall ? 'w-3.5 h-3.5' : 'w-4 h-4')} />
-        <span>Unit Ini</span>
+        <span>Jabatan Ini</span>
       </button>
 
-      {/* Mode 2: Unit + Seluruh Bawahan (Descendants) */}
+      {/* Mode 2: Jabatan + Seluruh Bawahan (Descendants) */}
       <button
         type="button"
         onClick={() => setScopeMode('descendants')}
@@ -67,7 +67,7 @@ export const OrganizationScopeSwitcher: React.FC<OrganizationScopeSwitcherProps>
         )}
       >
         <HeroSquares2X2 className={cn('shrink-0', isSmall ? 'w-3.5 h-3.5' : 'w-4 h-4')} />
-        <span>Unit + Seluruh Bawahan</span>
+        <span>Jabatan + Bawahan</span>
         <span
           className={cn(
             'ml-0.5 rounded-full px-1.5 py-0.2 text-[10px] font-bold shrink-0',

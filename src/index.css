@@ -116,34 +116,18 @@
     --fi-tooltip-fg: 255 255 255;
     color-scheme: light;
 
-    /* Primary = amber (default) */
-    --fi-primary-50: 255 251 235;
-    --fi-primary-100: 254 243 199;
-    --fi-primary-200: 253 230 138;
-    --fi-primary-300: 252 211 77;
-    --fi-primary-400: 251 191 36;
-    --fi-primary-500: 245 158 11;
-    --fi-primary-600: 217 119 6;
-    --fi-primary-700: 180 83 9;
-    --fi-primary-800: 146 64 14;
-    --fi-primary-900: 120 53 15;
-    --fi-primary-950: 69 26 3;
-  }
-
-  /* Green Accent Theme (oklch(79.2% 0.209 151.711)) */
-  html.theme-green,
-  .theme-green {
+    /* Primary = Neon Emerald (#4ADE80) from spesifikasi_reverse_engineering_ui.md */
     --fi-primary-50: 240 253 244;
     --fi-primary-100: 220 252 231;
-    --fi-primary-200: 185 248 207;
-    --fi-primary-300: 123 241 168;
-    --fi-primary-400: 5 223 114;     /* oklch(79.2% 0.209 151.711) */
-    --fi-primary-500: 0 201 80;
-    --fi-primary-600: 0 166 62;
-    --fi-primary-700: 0 130 54;
-    --fi-primary-800: 1 102 48;
-    --fi-primary-900: 13 84 43;
-    --fi-primary-950: 3 46 21;
+    --fi-primary-200: 187 247 208;
+    --fi-primary-300: 134 239 172;
+    --fi-primary-400: 74 222 128;      /* #4ADE80: Neon Accent */
+    --fi-primary-500: 34 197 94;       /* Base Primary */
+    --fi-primary-600: 22 163 74;
+    --fi-primary-700: 21 128 61;
+    --fi-primary-800: 22 101 52;
+    --fi-primary-900: 20 83 45;
+    --fi-primary-950: 5 46 22;
   }
 
   .dark {
@@ -618,4 +602,60 @@
   visibility: hidden;
 }
 
+/* Wealth Glassmorphism UI Classes (From Demos/preview-wealth-dashboard.html) */
+.glass-card {
+  background: rgba(18, 22, 24, 0.88);
+  backdrop-filter: blur(28px);
+  -webkit-backdrop-filter: blur(28px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.45);
+  border-radius: 24px;
+  transition: border-color 0.2s ease, transform 0.2s ease;
+}
 
+.glass-card:hover {
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
+.glass-dock {
+  background: rgba(15, 18, 20, 0.78);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+
+.glass-pill {
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  transition: all 0.2s ease;
+}
+
+.glass-pill:hover {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.24);
+}
+
+.circular-progress {
+  transform: rotate(-90deg);
+  transform-origin: 50% 50%;
+}
+
+.glow-green {
+  box-shadow: 0 0 16px rgba(77, 224, 162, 0.35);
+}
+
+.glow-lime {
+  box-shadow: 0 0 14px rgba(200, 235, 91, 0.35);
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}

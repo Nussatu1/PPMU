@@ -15,14 +15,12 @@ import {
   HeroMoon,
   HeroComputerDesktop,
   HeroBuildingOffice,
-  HeroCheck,
   HeroKey,
   HeroLockClosed,
   HeroExclamationTriangle,
   HeroClock,
   HeroChevronRight,
   HeroChevronDown,
-  HeroSquares2X2,
   HeroGlobeAlt,
   HeroTag,
 } from '@/components/icons/HeroIcons'
@@ -64,8 +62,8 @@ const SettingsRow: React.FC<SettingsRowProps> = ({
   isButton = false,
 }) => {
   const content = (
-    <div className="flex items-center justify-between gap-3 px-4 py-3.5 min-h-[52px]">
-      <div className="flex items-center gap-3 min-w-0">
+    <div className="flex items-center justify-between gap-3 px-4 py-3 sm:py-3.5 min-h-[52px]">
+      <div className="flex items-center gap-3 min-w-0 flex-1">
         <div className={cn('w-8 h-8 rounded-lg flex items-center justify-center text-white shrink-0 shadow-2xs', iconBgClass)}>
           {icon}
         </div>
@@ -92,7 +90,7 @@ const SettingsRow: React.FC<SettingsRowProps> = ({
 
 export const SettingsPage: React.FC = () => {
   const { currentOrganization, user } = useAuth()
-  const { mode, setMode, accentColor, setAccentColor } = useTheme()
+  const { mode, setMode } = useTheme()
   const { success, error } = useToast()
 
   // Ubah Kata Sandi State
@@ -239,47 +237,51 @@ export const SettingsPage: React.FC = () => {
 
                     <div className="space-y-3.5">
                       <Input
-                        label="Kata Sandi Saat Ini"
+                        label="Sandi Saat Ini"
                         type="password"
-                        placeholder="Masukkan kata sandi saat ini"
+                        placeholder="Sandi saat ini"
                         value={currentPassword}
                         onChange={(e) => {
                           setCurrentPassword(e.target.value)
                           if (passwordError) setPasswordError('')
                         }}
+                        className="text-base sm:text-sm min-h-[44px] sm:min-h-0"
                         required
                       />
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <Input
-                          label="Kata Sandi Baru"
+                          label="Sandi Baru"
                           type="password"
-                          placeholder="Minimal 6 karakter"
+                          placeholder="Min. 6 karakter"
                           value={newPassword}
                           onChange={(e) => {
                             setNewPassword(e.target.value)
                             if (passwordError) setPasswordError('')
                           }}
+                          className="text-base sm:text-sm min-h-[44px] sm:min-h-0"
                           required
                         />
                         <Input
-                          label="Konfirmasi Sandi Baru"
+                          label="Konfirmasi Sandi"
                           type="password"
-                          placeholder="Ketik ulang sandi baru"
+                          placeholder="Ketik ulang sandi"
                           value={confirmPassword}
                           onChange={(e) => {
                             setConfirmPassword(e.target.value)
                             if (passwordError) setPasswordError('')
                           }}
+                          className="text-base sm:text-sm min-h-[44px] sm:min-h-0"
                           required
                         />
                       </div>
                     </div>
 
-                    <div className="pt-3 border-t border-line/60 flex items-center justify-end gap-2">
+                    <div className="pt-3 border-t border-line/60 flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2.5 sm:gap-2">
                       <Button
                         type="button"
                         variant="secondary"
+                        className="w-full sm:w-auto min-h-[44px] sm:min-h-0"
                         onClick={() => {
                           setIsPasswordExpanded(false)
                           setPasswordError('')
@@ -290,6 +292,7 @@ export const SettingsPage: React.FC = () => {
                       <Button
                         type="submit"
                         variant="primary"
+                        className="w-full sm:w-auto min-h-[44px] sm:min-h-0"
                         isLoading={isUpdatingPassword}
                         disabled={!currentPassword || !newPassword || !confirmPassword || isUpdatingPassword}
                         icon={<HeroKey className="w-3.5 h-3.5 mr-1" />}
@@ -336,14 +339,14 @@ export const SettingsPage: React.FC = () => {
                       aria-selected={mode === 'light'}
                       onClick={() => setMode('light')}
                       className={cn(
-                        'px-2 py-1 text-xs font-medium rounded-md transition-all cursor-pointer inline-flex items-center gap-1 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-amber-500/70',
+                        'px-2.5 sm:px-2 py-1 min-h-[34px] sm:min-h-0 text-[11px] sm:text-xs font-medium rounded-md transition-all cursor-pointer inline-flex items-center gap-1 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-amber-500/70',
                         mode === 'light'
                           ? 'bg-surface text-amber-600 dark:text-amber-400 font-semibold shadow-2xs border border-line/50'
                           : 'text-fg-muted hover:text-fg'
                       )}
                     >
                       <HeroSun className="w-3.5 h-3.5" />
-                      <span className="hidden sm:inline">Terang</span>
+                      <span>Terang</span>
                     </button>
                     <button
                       type="button"
@@ -351,14 +354,14 @@ export const SettingsPage: React.FC = () => {
                       aria-selected={mode === 'dark'}
                       onClick={() => setMode('dark')}
                       className={cn(
-                        'px-2 py-1 text-xs font-medium rounded-md transition-all cursor-pointer inline-flex items-center gap-1 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-amber-500/70',
+                        'px-2.5 sm:px-2 py-1 min-h-[34px] sm:min-h-0 text-[11px] sm:text-xs font-medium rounded-md transition-all cursor-pointer inline-flex items-center gap-1 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-amber-500/70',
                         mode === 'dark'
                           ? 'bg-surface text-amber-600 dark:text-amber-400 font-semibold shadow-2xs border border-line/50'
                           : 'text-fg-muted hover:text-fg'
                       )}
                     >
                       <HeroMoon className="w-3.5 h-3.5" />
-                      <span className="hidden sm:inline">Gelap</span>
+                      <span>Gelap</span>
                     </button>
                     <button
                       type="button"
@@ -366,60 +369,20 @@ export const SettingsPage: React.FC = () => {
                       aria-selected={mode === 'system'}
                       onClick={() => setMode('system')}
                       className={cn(
-                        'px-2 py-1 text-xs font-medium rounded-md transition-all cursor-pointer inline-flex items-center gap-1 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-amber-500/70',
+                        'px-2.5 sm:px-2 py-1 min-h-[34px] sm:min-h-0 text-[11px] sm:text-xs font-medium rounded-md transition-all cursor-pointer inline-flex items-center gap-1 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-amber-500/70',
                         mode === 'system'
                           ? 'bg-surface text-amber-600 dark:text-amber-400 font-semibold shadow-2xs border border-line/50'
                           : 'text-fg-muted hover:text-fg'
                       )}
                     >
                       <HeroComputerDesktop className="w-3.5 h-3.5" />
-                      <span className="hidden sm:inline">Sistem</span>
+                      <span>Sistem</span>
                     </button>
                   </div>
                 }
               />
 
-              {/* Warna Aksen */}
-              <SettingsRow
-                icon={<HeroSquares2X2 className="w-4 h-4 text-white" />}
-                iconBgClass="bg-emerald-600"
-                label="Warna Aksen"
-                trailing={
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setAccentColor('amber')}
-                      aria-label="Aksen Kuning"
-                      className={cn(
-                        'flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-medium transition-all cursor-pointer',
-                        accentColor === 'amber'
-                          ? 'bg-amber-500/15 border-amber-500/60 text-amber-700 dark:text-amber-300 ring-1 ring-amber-500/30'
-                          : 'border-line bg-surface-muted/40 text-fg-muted hover:text-fg'
-                      )}
-                    >
-                      <span className="w-2.5 h-2.5 rounded-full bg-amber-500 inline-block shadow-2xs" />
-                      <span>Kuning</span>
-                      {accentColor === 'amber' && <HeroCheck className="w-3 h-3 text-amber-600 dark:text-amber-400 ml-0.5" />}
-                    </button>
 
-                    <button
-                      type="button"
-                      onClick={() => setAccentColor('green')}
-                      aria-label="Aksen Hijau"
-                      className={cn(
-                        'flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-medium transition-all cursor-pointer',
-                        accentColor === 'green'
-                          ? 'bg-emerald-500/15 border-emerald-500/60 text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-500/30'
-                          : 'border-line bg-surface-muted/40 text-fg-muted hover:text-fg'
-                      )}
-                    >
-                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block shadow-2xs" />
-                      <span>Hijau</span>
-                      {accentColor === 'green' && <HeroCheck className="w-3 h-3 text-emerald-600 dark:text-emerald-400 ml-0.5" />}
-                    </button>
-                  </div>
-                }
-              />
             </SettingsSection>
 
             {/* GRUP: IDENTITAS LEMBAGA */}
@@ -429,7 +392,7 @@ export const SettingsPage: React.FC = () => {
                 iconBgClass="bg-zinc-700 dark:bg-zinc-800"
                 label="Organisasi"
                 trailing={
-                  <span className="text-xs font-semibold text-fg truncate max-w-[200px]">
+                  <span className="text-xs font-semibold text-fg truncate max-w-[140px] sm:max-w-[220px]">
                     {currentOrganization?.name || 'Belum Terhubung'}
                   </span>
                 }
@@ -451,7 +414,7 @@ export const SettingsPage: React.FC = () => {
                 iconBgClass="bg-sky-600"
                 label="Subdomain Web"
                 trailing={
-                  <span className="px-2 py-0.5 rounded-md bg-surface-muted border border-line font-mono text-xs font-semibold text-amber-600 dark:text-amber-400">
+                  <span className="px-2 py-0.5 rounded-md bg-surface-muted border border-line font-mono text-xs font-semibold text-amber-600 dark:text-amber-400 truncate max-w-[150px] sm:max-w-[220px]">
                     {currentOrganization?.slug ? `${currentOrganization.slug}.mytafrih.id` : 'jamub.mytafrih.id'}
                   </span>
                 }
